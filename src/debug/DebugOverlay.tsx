@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { advance, useFrame, useThree } from '@react-three/fiber'
+import { HUNTS_TO_WARRIOR } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import { attachSceneToBridge, attachStepToBridge, DEBUG } from './expose'
@@ -77,7 +78,8 @@ export function DebugOverlay() {
         `pos      ${c.pos.x.toFixed(1)} ${c.pos.y.toFixed(1)} ${c.pos.z.toFixed(1)}\n` +
         `speed    ${c.speed.toFixed(2)}\n` +
         `action   ${c.action}${live.resting ? ' (rest)' : ''}\n` +
-        `hunts    ${g.huntCount}   seed ${g.seed}`
+        `hunts    ${g.huntCount}/${HUNTS_TO_WARRIOR}${g.identity.warrior ? ' warrior' : ''}` +
+        `   seed ${g.seed}`
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)

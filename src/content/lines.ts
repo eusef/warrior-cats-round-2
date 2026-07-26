@@ -59,6 +59,30 @@ export const NAME_PREFIXES = [
 
 export const APPRENTICE_SUFFIX = 'paw'
 
+/**
+ * The warrior suffix for each prefix above, *by the same index*. Every pair is
+ * that cat's real name from the books: Firepaw becomes Fireheart, Sandpaw
+ * becomes Sandstorm. Sharing the index with NAME_PREFIXES is why the save never
+ * has to store a second number.
+ *
+ * Same rules as NAME_PREFIXES, plus one: keep this array exactly as long as
+ * that one. Never reorder, append only, and append to both together.
+ */
+export const WARRIOR_SUFFIXES = [
+  'heart', // Fire    -> Fireheart
+  'fur', //   Blue    -> Bluefur
+  'claw', //  Bramble -> Brambleclaw
+  'wing', //  Dove    -> Dovewing
+  'leaf', //  Holly   -> Hollyleaf
+  'fur', //   Ash     -> Ashfur
+  'cloud', // Fern    -> Ferncloud
+  'fur', //   Frost   -> Frostfur
+  'wing', //  Robin   -> Robinwing
+  'storm', // Sand    -> Sandstorm
+  'claw', //  Thistle -> Thistleclaw
+  'pelt', //  Willow  -> Willowpelt
+] as const
+
 export const CREATE_TITLE = 'Make your cat'
 export const CREATE_PELT_LABEL = 'Pelt'
 export const CREATE_EYES_LABEL = 'Eyes'
@@ -71,4 +95,29 @@ export const CREATE_BEGIN = 'Begin'
  */
 export function nameToast(name: string): string {
   return `You are ${name}.`
+}
+
+// ---------------------------------------------------------------------------
+// Warrior name ceremony
+// ---------------------------------------------------------------------------
+
+/**
+ * The ceremony, in the leader's voice. The leader is never named, never drawn
+ * and never answered: these are four lines of ceremony, not a conversation and
+ * not an NPC. Two of them are fixed templates with a single slot filled only
+ * from NAME_PREFIXES / WARRIOR_SUFFIXES, so the complete set of strings this
+ * screen can ever show is enumerable by reading this file. Same closed-list
+ * rule as `nameToast`.
+ *
+ * Second person throughout ("you have hunted well") because the cat has no
+ * stated gender and the leader is speaking to her anyway.
+ */
+export const CEREMONY_CALL = 'I call upon StarClan to look down on this apprentice.'
+export const CEREMONY_PRAISE = 'You have hunted well and you know the warrior code.'
+export const CEREMONY_WELCOME = 'The Clan welcomes you as a warrior.'
+export const CEREMONY_DISMISS = 'Continue'
+
+/** `Firepaw, from this moment you will be known as` */
+export function ceremonyRename(apprentice: string): string {
+  return `${apprentice}, from this moment you will be known as`
 }

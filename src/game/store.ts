@@ -7,11 +7,17 @@ import {
   DEFAULT_PREFIX,
   CREATE_CAM_START_YAW,
   EYE_COLORS,
+  HUNTS_TO_WARRIOR,
   NEED_MAX,
   PELTS,
   SAVE_KEY,
 } from './constants'
-import { APPRENTICE_SUFFIX, NAME_PREFIXES, nameToast } from '../content/lines'
+import {
+  APPRENTICE_SUFFIX,
+  NAME_PREFIXES,
+  WARRIOR_SUFFIXES,
+  nameToast,
+} from '../content/lines'
 import { live, resetLive } from './live'
 import { resetNeedEdges } from './needs'
 import { DEFAULT_SEED } from './rng'
@@ -24,40 +30,73 @@ export interface Toast {
   text: string
 }
 
+/** An open warrior-name ceremony. Null the rest of the time. */
+export interface Ceremony {
+  id: number
+  /** The name she is leaving behind, e.g. `Firepaw`. */
+  from: string
+  /** The name she is being given, e.g. `Fireheart`. */
+  to: string
+}
+
 /**
  * Who the cat is. Indices into PELTS / EYE_COLORS / NAME_PREFIXES, never the
  * values themselves, so retuning a colour updates the cat she already made.
+ *
+ * `warrior` is the whole of the ceremony's persisted state. The suffix is
+ * looked up with the prefix index she already chose, so earning a warrior name
+ * costs the save one boolean and not a second index to keep in sync.
  */
 export interface Identity {
   pelt: number
   eyes: number
   prefix: number
+  warrior: boolean
 }
 
 export const DEFAULT_IDENTITY: Identity = {
   pelt: DEFAULT_PELT,
   eyes: DEFAULT_EYES,
   prefix: DEFAULT_PREFIX,
+  warrior: false,
 }
 
-/** `<Prefix>paw`. The ceremony in the backlog replaces the suffix, not this. */
-export function catName(id: Identity): string {
+/** `<Prefix>paw`. What she is called until the ceremony. */
+export function apprenticeName(id: Identity): string {
   return NAME_PREFIXES[wrap(id.prefix, NAME_PREFIXES.length)] + APPRENTICE_SUFFIX
 }
 
+/**
+ * `<Prefix><Suffix>`, the book name for that prefix. Wrapped against
+ * WARRIOR_SUFFIXES separately so a length mismatch between the two lists is a
+ * wrong suffix rather than an undefined splices into the name.
+ */
+export function warriorName(id: Identity): string {
+  const i = wrap(id.prefix, NAME_PREFIXES.length)
+  return NAME_PREFIXES[i] + WARRIOR_SUFFIXES[wrap(i, WARRIOR_SUFFIXES.length)]
+}
+
+/** The single composition point. Every consumer follows this branch for free. */
+export function catName(id: Identity): string {
+  return id.warrior ? warriorName(id) : apprenticeName(id)
+}
+
 interface SaveBlob {
-  v: 1 | 2
+  v: 1 | 2 | 3
   health: number
   hunger: number
   huntCount: number
   x: number
   z: number
   yaw: number
-  // v2 only. A v1 blob has no identity, which is exactly how we know she has
+  // v2 and up. A v1 blob has no identity, which is exactly how we know she has
   // never been through creation: no identity means show the creation screen.
   pelt?: number
   eyes?: number
   prefix?: number
+  // v3 only. Absent means apprentice, so a v2 cat loads with every hunt intact
+  // and simply has the ceremony still ahead of her.
+  warrior?: boolean
 }
 
 interface GameState {
@@ -74,10 +113,17 @@ interface GameState {
   /** False until she taps Begin. Drives whether creation is shown at all. */
   identityChosen: boolean
 
+  /** Armed by the qualifying hunt, spent when the eat beat frees the screen. */
+  pendingCeremony: boolean
+  /** Non-null only while the ceremony overlay is up. Never a `phase`. */
+  ceremony: Ceremony | null
+
   start: () => void
   setIdentity: (patch: Partial<Identity>) => void
   beginPlay: () => void
   addHunt: () => void
+  promote: () => void
+  endCeremony: () => void
   showToast: (text: string) => void
   clearToast: (id: number) => void
   setSeed: (n: number) => void
@@ -88,6 +134,7 @@ interface GameState {
 }
 
 let toastId = 0
+let ceremonyId = 0
 
 export const useGame = create<GameState>((set, get) => ({
   phase: 'title',
@@ -96,6 +143,8 @@ export const useGame = create<GameState>((set, get) => ({
   toast: null,
   identity: DEFAULT_IDENTITY,
   identityChosen: false,
+  pendingCeremony: false,
+  ceremony: null,
 
   // The title tap is also the audio-unlock gesture, so the save is read here
   // rather than later: by this point we know whether she already has a cat.
@@ -127,7 +176,43 @@ export const useGame = create<GameState>((set, get) => ({
     get().save()
   },
 
-  addHunt: () => set((s) => ({ huntCount: s.huntCount + 1 })),
+  // Arms the ceremony rather than opening it. The catch toast has only just
+  // gone up and the eat beat still has a second to run, so opening here would
+  // put the biggest moment in the game behind a chewing animation. PlayerCat
+  // spends the flag when the cat finishes eating and the screen is free.
+  //
+  // `>=`, not `===`: a save from before this feature can arrive already past
+  // the threshold, and she should get the ceremony on her next catch rather
+  // than never.
+  addHunt: () =>
+    set((s) => {
+      const huntCount = s.huntCount + 1
+      return {
+        huntCount,
+        pendingCeremony:
+          s.pendingCeremony || (!s.identity.warrior && huntCount >= HUNTS_TO_WARRIOR),
+      }
+    }),
+
+  promote: () => {
+    const s = get()
+    if (s.identity.warrior) return // ceremony is once, ever
+    const identity = { ...s.identity, warrior: true }
+    ceremonyId += 1
+    set({
+      identity,
+      pendingCeremony: false,
+      // The catch toast is still up for another second. Clear it rather than
+      // leave it sitting behind the dim while the ceremony reads.
+      toast: null,
+      ceremony: { id: ceremonyId, from: apprenticeName(s.identity), to: warriorName(identity) },
+    })
+    // Written immediately: the name is the one thing she would be upset to
+    // lose, and the next timed save is up to ten seconds away.
+    get().save()
+  },
+
+  endCeremony: () => set({ ceremony: null }),
 
   showToast: (text) => {
     toastId += 1
@@ -147,7 +232,7 @@ export const useGame = create<GameState>((set, get) => ({
   save: () => {
     const id = get().identity
     const blob: SaveBlob = {
-      v: 2,
+      v: 3,
       health: live.health,
       hunger: live.hunger,
       huntCount: get().huntCount,
@@ -156,7 +241,9 @@ export const useGame = create<GameState>((set, get) => ({
       yaw: live.cat.yaw,
       // Written only once she has actually chosen, so a save made before the
       // Begin tap still routes her back into creation next time.
-      ...(get().identityChosen ? { pelt: id.pelt, eyes: id.eyes, prefix: id.prefix } : null),
+      ...(get().identityChosen
+        ? { pelt: id.pelt, eyes: id.eyes, prefix: id.prefix, warrior: id.warrior }
+        : null),
     }
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(blob))
@@ -179,17 +266,21 @@ export const useGame = create<GameState>((set, get) => ({
     } catch {
       return false
     }
-    if (!blob || (blob.v !== 1 && blob.v !== 2)) return false
+    // Widen this every time the version goes up. A version this does not name
+    // is discarded, which silently throws away her whole game.
+    if (!blob || (blob.v !== 1 && blob.v !== 2 && blob.v !== 3)) return false
 
     // A v1 blob (the build she has already played) keeps every bit of its
     // progress and simply arrives without a cat, which sends her through
-    // creation once and then straight back into her own game.
+    // creation once and then straight back into her own game. A v2 blob keeps
+    // its cat and arrives as an apprentice, with the ceremony still to come.
     if (typeof blob.pelt === 'number') {
       set({
         identity: {
           pelt: wrap(Math.floor(blob.pelt), PELTS.length),
           eyes: wrap(Math.floor(numOr(blob.eyes, DEFAULT_EYES)), EYE_COLORS.length),
           prefix: wrap(Math.floor(numOr(blob.prefix, DEFAULT_PREFIX)), NAME_PREFIXES.length),
+          warrior: blob.warrior === true,
         },
         identityChosen: true,
       })
@@ -222,6 +313,8 @@ export const useGame = create<GameState>((set, get) => ({
       toast: null,
       identity: DEFAULT_IDENTITY,
       identityChosen: false,
+      pendingCeremony: false,
+      ceremony: null,
       phase: 'title',
     })
   },

@@ -12,6 +12,7 @@ import { Prey } from './actors/Prey'
 import { FollowCamera } from './actors/FollowCamera'
 import { Hud } from './hud/Hud'
 import { CreateCat } from './ui/CreateCat'
+import { Ceremony } from './ui/Ceremony'
 import { DebugOverlay, DebugSampler } from './debug/DebugOverlay'
 import { DEBUG } from './debug/expose'
 import { TITLE_HINT } from './content/lines'
@@ -47,6 +48,7 @@ export function App() {
 
       <Hud />
       <CreateCat />
+      <Ceremony />
       <DebugOverlay />
       <TitleScreen />
     </>

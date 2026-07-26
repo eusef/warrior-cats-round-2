@@ -194,6 +194,7 @@ export const POUNCE_FORWARD_SPEED = 8.5 // m/s during the pounce
 export const POUNCE_HOP_HEIGHT = 0.9 // metres of vertical arc
 export const POUNCE_COOLDOWN = 0.35 // seconds before another pounce
 export const EAT_DURATION = 1.1 // seconds the cut-away eat beat lasts
+export const HUNTS_TO_WARRIOR = 5 // successful hunts before the warrior ceremony
 
 // ---------------------------------------------------------------------------
 // Foliage
@@ -215,6 +216,8 @@ export const SAVE_INTERVAL_SEC = 10
 // Feedback timings
 // ---------------------------------------------------------------------------
 export const TOAST_DURATION = 1.8 // seconds a HUD toast stays up
+export const CEREMONY_LINE_DELAY = 1.15 // seconds between ceremony lines landing
+export const CEREMONY_AUTO_DISMISS = 12 // seconds before the ceremony closes itself
 
 // ---------------------------------------------------------------------------
 // Input

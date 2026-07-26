@@ -1,7 +1,7 @@
 import { live, resetLive } from '../game/live'
 import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
-import { NEED_MAX } from '../game/constants'
+import { HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
 import { input, setActionHeld } from '../input/useTouchInput'
 
 /** ?debug=1 turns on the overlay and the window bridge. Off by default. */
@@ -41,6 +41,11 @@ export interface GameBridge {
   setIdentity: (patch: Partial<Identity>) => void
   beginPlay: () => void
   catColors: () => Record<string, string>
+  /** Opens the warrior ceremony now, without hunting to the threshold. */
+  promote: () => void
+  /** Closes it, the way the Continue tap does. */
+  endCeremony: () => void
+  ceremony: () => Record<string, unknown> | null
   /** Installed by DebugSampler once the R3F root exists. */
   step?: (count?: number, dt?: number) => number
 }
@@ -80,8 +85,11 @@ export function installBridge() {
         health: round2(live.health),
         hunger: round2(live.hunger),
         huntCount: useGame.getState().huntCount,
+        huntsToWarrior: Math.max(0, HUNTS_TO_WARRIOR - useGame.getState().huntCount),
         phase: useGame.getState().phase,
         name: catName(useGame.getState().identity),
+        warrior: useGame.getState().identity.warrior,
+        ceremonyOpen: useGame.getState().ceremony !== null,
         colors: debugHooks.catColors?.() ?? {},
         action: live.cat.action,
         pos: {
@@ -129,6 +137,12 @@ export function installBridge() {
     setIdentity: (patch) => useGame.getState().setIdentity(patch),
     beginPlay: () => useGame.getState().beginPlay(),
     catColors: () => debugHooks.catColors?.() ?? {},
+    promote: () => useGame.getState().promote(),
+    endCeremony: () => useGame.getState().endCeremony(),
+    ceremony: () => {
+      const c = useGame.getState().ceremony
+      return c ? { ...c } : null
+    },
   }
 
   ;(window as unknown as { __game: GameBridge }).__game = bridge

@@ -139,7 +139,12 @@ export function PlayerCat() {
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05)
     const cat = live.cat
-    const playing = useGame.getState().phase === 'playing'
+    // The ceremony overlay swallows new touches, but it cannot let go of a
+    // thumb that was already on the joystick when the eat beat ended: input
+    // keeps its last vector and the cat walks out of frame while her name is
+    // being read. Standing her down here is what makes the beat hold still.
+    const gs = useGame.getState()
+    const playing = gs.phase === 'playing' && gs.ceremony === null
 
     if (cat.pounceCooldown > 0) cat.pounceCooldown -= delta
 
@@ -207,7 +212,11 @@ export function PlayerCat() {
         cat.eatT = 0
         feed(MEAL_HUNGER_RESTORE)
         const g = useGame.getState()
-        g.showToast(pick(EAT_LINES, g.huntCount))
+        // The ceremony replaces the eat line, it does not race it. The toast
+        // has no queue, so both on the same frame means one of them is never
+        // seen. This is the same collision the `wasResting` seed above fixes.
+        if (g.pendingCeremony) g.promote()
+        else g.showToast(pick(EAT_LINES, g.huntCount))
       }
     } else {
       // Crouching always resolves against the walk band. Scaling the run band
