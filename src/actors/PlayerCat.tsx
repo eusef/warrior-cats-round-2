@@ -1,0 +1,294 @@
+import { useEffect, useMemo, useRef } from 'react'
+import * as THREE from 'three'
+import { useFrame } from '@react-three/fiber'
+import { useGLTF } from '@react-three/drei'
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import {
+  CAT_ACCEL,
+  CAT_CROUCH_SPEED_MULT,
+  CAT_DECEL,
+  CAT_EYE_COLOR,
+  CAT_GROUND_OFFSET,
+  CAT_MODEL_YAW_OFFSET,
+  CAT_PELT_COLOR,
+  CAT_PELT_LIGHT,
+  CAT_RUN_SPEED,
+  CAT_SCALE,
+  CAT_TURN_SPEED,
+  CAT_WALK_SPEED,
+  CAT_WALK_THRESHOLD,
+  CAMP_RADIUS,
+  EAT_DURATION,
+  MEAL_HUNGER_RESTORE,
+  POUNCE_COOLDOWN,
+  POUNCE_DURATION,
+  POUNCE_FORWARD_SPEED,
+  POUNCE_HOP_HEIGHT,
+  POUNCE_RANGE,
+  SAVE_INTERVAL_SEC,
+  WORLD_EDGE_MARGIN,
+  WORLD_HALF,
+} from '../game/constants'
+import { live, resetLive } from '../game/live'
+import { feed, tickNeeds } from '../game/needs'
+import { useGame } from '../game/store'
+import { clamp, distToCamp, groundHeightAt } from '../game/terrain'
+import { input } from '../input/useTouchInput'
+import { treeColliders } from '../world/Foliage'
+import { preyRegistry } from './preyRegistry'
+import { useCatAnimation } from './useCatAnimation'
+import { CAMP_LINES, CATCH_LINES, EAT_LINES, HUNGER_LINES } from '../content/lines'
+
+const MODEL_URL = '/models/Fox.glb'
+useGLTF.preload(MODEL_URL)
+
+// Hoisted. Nothing is allocated inside useFrame.
+const _dir = new THREE.Vector2()
+const _desired = new THREE.Vector2()
+
+export function PlayerCat() {
+  const group = useRef<THREE.Group>(null)
+  const { scene, animations } = useGLTF(MODEL_URL)
+
+  // SkeletonUtils.clone is mandatory here: a plain useGLTF reuse shares the
+  // skeleton, and every cat would animate identically. Also keeps StrictMode's
+  // double mount from attaching the same scene graph twice.
+  const model = useMemo(() => {
+    const cloned = skeletonClone(scene) as THREE.Group
+    cloned.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      mesh.castShadow = true
+      mesh.receiveShadow = false
+      mesh.frustumCulled = false // skinned bounds go stale mid-animation
+      // Clone the materials so recolouring one cat never tints another.
+      const src = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[]
+      const recolor = (m: THREE.MeshStandardMaterial) => {
+        const c = m.clone()
+        if (m.name === 'Main') c.color.set(CAT_PELT_COLOR)
+        else if (m.name === 'Main_Light') c.color.set(CAT_PELT_LIGHT)
+        else if (m.name === 'Eyes') c.color.set(CAT_EYE_COLOR)
+        return c
+      }
+      mesh.material = Array.isArray(src) ? src.map(recolor) : recolor(src)
+    })
+    return cloned
+  }, [scene])
+
+  const animator = useCatAnimation(model, animations)
+  const saveTimer = useRef(0)
+  const pounceResolved = useRef(false)
+  const wasResting = useRef(false)
+  const restCount = useRef(0)
+
+  useEffect(() => {
+    const g = useGame.getState()
+    if (!g.load()) resetLive()
+    return () => {
+      useGame.getState().save()
+    }
+  }, [])
+
+  useFrame((_, rawDelta) => {
+    const delta = Math.min(rawDelta, 0.05)
+    const cat = live.cat
+    const playing = useGame.getState().phase === 'playing'
+
+    if (cat.pounceCooldown > 0) cat.pounceCooldown -= delta
+
+    // --- intent -------------------------------------------------------------
+    const busy = cat.eatT > 0
+    cat.crouched = playing && !busy && input.action && cat.pounceT <= 0
+
+    if (playing && !busy && input.actionReleased) {
+      input.actionReleased = false
+      if (cat.pounceT <= 0 && cat.pounceCooldown <= 0) {
+        cat.pounceT = POUNCE_DURATION
+        cat.pounceCooldown = POUNCE_DURATION + POUNCE_COOLDOWN
+        cat.crouched = false
+      }
+    } else if (input.actionReleased) {
+      input.actionReleased = false
+    }
+
+    // --- movement -----------------------------------------------------------
+    const camYaw = live.camera.yaw
+    const fx = -Math.sin(camYaw)
+    const fz = -Math.cos(camYaw)
+    const rx = Math.cos(camYaw)
+    const rz = -Math.sin(camYaw)
+
+    _dir.set(
+      rx * input.move.x + fx * input.move.y,
+      rz * input.move.x + fz * input.move.y,
+    )
+    const wantMag = playing && !busy ? Math.min(_dir.length(), 1) : 0
+    if (wantMag > 0.0001) _dir.multiplyScalar(1 / _dir.length())
+
+    if (cat.pounceT > 0) {
+      // The pounce commits: it drives straight along the current heading.
+      cat.pounceT -= delta
+      const prog = 1 - clamp(cat.pounceT / POUNCE_DURATION, 0, 1)
+      cat.hopHeight = Math.sin(prog * Math.PI) * POUNCE_HOP_HEIGHT
+      const px = -Math.sin(cat.yaw)
+      const pz = -Math.cos(cat.yaw)
+      const arc = Math.sin(prog * Math.PI) * POUNCE_FORWARD_SPEED
+      cat.vel.set(px * arc, 0, pz * arc)
+      cat.speed = arc
+
+      // Contact lands a little past the apex, which is where it reads as a hit.
+      if (prog >= 0.45 && !pounceResolved.current) {
+        pounceResolved.current = true
+        const caught = preyRegistry.tryCatch?.(cat.pos.x, cat.pos.z, POUNCE_RANGE) ?? false
+        if (caught) {
+          cat.eatT = EAT_DURATION
+          const g = useGame.getState()
+          g.addHunt()
+          g.showToast(pick(CATCH_LINES, g.huntCount))
+        }
+      }
+      if (cat.pounceT <= 0) {
+        cat.pounceT = 0
+        cat.hopHeight = 0
+        pounceResolved.current = false
+      }
+    } else if (busy) {
+      cat.eatT -= delta
+      cat.vel.set(0, 0, 0)
+      cat.speed = 0
+      if (cat.eatT <= 0) {
+        cat.eatT = 0
+        feed(MEAL_HUNGER_RESTORE)
+        const g = useGame.getState()
+        g.showToast(pick(EAT_LINES, g.huntCount))
+      }
+    } else {
+      // Crouching always resolves against the walk band. Scaling the run band
+      // instead let a stalking cat hit 2.7 m/s, which does not read as sneaking.
+      const runBand = wantMag > CAT_WALK_THRESHOLD && !cat.crouched
+      let top = runBand ? CAT_RUN_SPEED : CAT_WALK_SPEED
+      if (cat.crouched) top *= CAT_CROUCH_SPEED_MULT
+      const targetSpeed = wantMag * top
+
+      _desired.set(_dir.x * targetSpeed, _dir.y * targetSpeed)
+      const rate = targetSpeed > cat.speed ? CAT_ACCEL : CAT_DECEL
+      const step = rate * delta
+
+      cat.vel.x += clampAbs(_desired.x - cat.vel.x, step)
+      cat.vel.z += clampAbs(_desired.y - cat.vel.z, step)
+      cat.speed = Math.hypot(cat.vel.x, cat.vel.z)
+      if (cat.speed < 0.02) {
+        cat.vel.set(0, 0, 0)
+        cat.speed = 0
+      }
+    }
+
+    // --- integrate ----------------------------------------------------------
+    cat.pos.x += cat.vel.x * delta
+    cat.pos.z += cat.vel.z * delta
+
+    pushOutOfTrees(cat.pos)
+
+    const limit = WORLD_HALF - WORLD_EDGE_MARGIN
+    cat.pos.x = clamp(cat.pos.x, -limit, limit)
+    cat.pos.z = clamp(cat.pos.z, -limit, limit)
+    cat.pos.y = groundHeightAt(cat.pos.x, cat.pos.z) + CAT_GROUND_OFFSET
+
+    // --- facing -------------------------------------------------------------
+    if (cat.speed > 0.05 && cat.pounceT <= 0) {
+      const want = Math.atan2(-cat.vel.x, -cat.vel.z)
+      cat.yaw += shortestAngle(cat.yaw, want) * Math.min(1, CAT_TURN_SPEED * delta)
+    }
+
+    // --- state --------------------------------------------------------------
+    // Standing still in camp rests, full stop. It used to require !crouched,
+    // which meant a thumb left on the paw button silently blocked all healing
+    // with nothing on screen to explain why. She hunts with that button held,
+    // so that was the common case, not the edge case.
+    const atCamp = distToCamp(cat.pos.x, cat.pos.z) < CAMP_RADIUS
+    live.resting = playing && atCamp && cat.speed < 0.05 && !busy && cat.pounceT <= 0
+
+    // Resting outranks crouch in the pose so the curled-up animation is an
+    // unambiguous "this is working". Any movement drops straight back to crouch.
+    cat.action =
+      cat.pounceT > 0
+        ? 'pounce'
+        : busy
+          ? 'eat'
+          : live.resting
+            ? 'rest'
+            : cat.crouched
+              ? 'crouch'
+              : cat.speed > CAT_WALK_SPEED * 0.98
+                ? 'run'
+                : cat.speed > 0.05
+                  ? 'walk'
+                  : 'idle'
+
+    if (playing) {
+      // Rising edge only: say it once on arrival, not every frame she stands there.
+      if (live.resting && !wasResting.current) {
+        useGame.getState().showToast(pick(CAMP_LINES, restCount.current++))
+      }
+      wasResting.current = live.resting
+
+      const event = tickNeeds(delta, live.resting)
+      if (event === 'hunger-low' || event === 'hunger-empty') {
+        useGame.getState().showToast(pick(HUNGER_LINES, event === 'hunger-empty' ? 1 : 0))
+      }
+
+      saveTimer.current += delta
+      if (saveTimer.current >= SAVE_INTERVAL_SEC) {
+        saveTimer.current = 0
+        useGame.getState().save()
+      }
+    }
+
+    // --- apply --------------------------------------------------------------
+    const g = group.current
+    if (g) {
+      g.position.set(cat.pos.x, cat.pos.y + cat.hopHeight, cat.pos.z)
+      g.rotation.y = cat.yaw + CAT_MODEL_YAW_OFFSET
+    }
+    animator.update(cat.action, cat.speed, delta)
+  })
+
+  return (
+    <group ref={group}>
+      <primitive object={model} scale={CAT_SCALE} />
+    </group>
+  )
+}
+
+function clampAbs(v: number, max: number) {
+  return v > max ? max : v < -max ? -max : v
+}
+
+function shortestAngle(from: number, to: number) {
+  let d = (to - from) % (Math.PI * 2)
+  if (d > Math.PI) d -= Math.PI * 2
+  if (d < -Math.PI) d += Math.PI * 2
+  return d
+}
+
+/** Circular push-out against trunks. 190 checks a frame is cheaper than a grid. */
+function pushOutOfTrees(pos: THREE.Vector3) {
+  const bodyR = 0.35
+  for (let i = 0; i < treeColliders.length; i++) {
+    const t = treeColliders[i]
+    const dx = pos.x - t.x
+    const dz = pos.z - t.z
+    const min = t.r + bodyR
+    if (dx > min || dx < -min || dz > min || dz < -min) continue
+    const d2 = dx * dx + dz * dz
+    if (d2 >= min * min || d2 === 0) continue
+    const d = Math.sqrt(d2)
+    const push = (min - d) / d
+    pos.x += dx * push
+    pos.z += dz * push
+  }
+}
+
+function pick<T>(arr: readonly T[], n: number): T {
+  return arr[Math.abs(n) % arr.length]
+}

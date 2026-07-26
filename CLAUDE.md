@@ -1,0 +1,208 @@
+# CLAUDE.md
+
+## Project
+
+A third-person cat survival sim in the spirit of WolfQuest Anniversary Edition, themed as Warrior Cats. Single player. The player is a warrior cat in a forest territory: hunt, explore, return to camp.
+
+**Audience: one 10-year-old, playing on an iPad over the local network.** She is the only user who matters. Every tradeoff resolves toward "is this fun on a touchscreen in 30 seconds of play."
+
+**This is never published or sold.** Warrior Cats is Erin Hunter / HarperCollins IP. Personal household use only. Do not add analytics, telemetry, accounts, cloud saves, share buttons, or deploy configs.
+
+## Hard constraints
+
+| Constraint | Rule |
+|---|---|
+| Target device | iPad, Safari, landscape. This is the ONLY target. |
+| Input | Touch only. No keyboard, no mouse, no hover states. Desktop input is dev-only convenience. |
+| Delivery | Vite dev server on the LAN. No build/deploy pipeline. |
+| Framerate | 60fps on iPad. If a feature can't hold 60, cut the feature. |
+| Dependencies | Ask before adding any new package. Prefer 30 lines of our own code over a dependency. |
+
+## Content policy (non-negotiable)
+
+This is for one 10-year-old. If it would not fit in a Bluey episode, it does not go in.
+
+**Never implement, never propose, never research toward:**
+
+- **Romance, courtship, mating, or finding a mate, in any form.** WolfQuest's core loop is mate-finding and the Warrior Cats books contain mating and kits. Both are excluded here. When a design reference points that way, drop it and build something else. Do not ask whether an exception applies.
+- Nuzzling, grooming, cuddling, or any physical-affection framing between the player cat and an adult NPC.
+- Kits, pregnancy, or raising a litter as a mechanic.
+- Death of the player cat, gore, blood, visible wounds, or cats killing cats. Injury is a number on a health bar and nothing else.
+- The grim material from the source books: murder, exile, prophecy dread, StarClan death visions, the Dark Forest.
+- **Any generated or free-text dialogue.** Every NPC line is a hand-written string in `src/content/lines.ts`. No LLM API calls in the shipped game, ever, for any reason. This rule exists to close the whole category rather than filter it line by line.
+
+Rivals get chased off, not fought. Prey is caught and the animation cuts away. When something sits near the line, stop and ask rather than writing it.
+
+## Stack (pinned, do not change)
+
+- Vite + React 18 + TypeScript
+- `@react-three/fiber` (R3F) for the scene graph
+- `@react-three/drei` for helpers (`useGLTF`, `useAnimations`, `Sky`, `Instances`)
+- `zustand` for game state
+- No physics engine. Movement is kinematic: raycast down onto terrain for ground height.
+- HUD is plain DOM/CSS overlaid on the canvas, never rendered in WebGL.
+
+## Repo layout
+
+```
+src/
+  main.tsx
+  App.tsx              # Canvas + HUD + Suspense boundary
+  game/
+    store.ts           # zustand: needs, position, time, save/load
+    constants.ts       # ALL tunable numbers live here, nowhere else
+  world/
+    Terrain.tsx
+    Foliage.tsx        # instanced only
+    Camp.tsx
+  actors/
+    PlayerCat.tsx
+    Prey.tsx
+    useCatAnimation.ts
+  hud/
+    Hud.tsx
+    Joystick.tsx
+    ActionButton.tsx
+  input/
+    useTouchInput.ts   # single source of truth for input
+  debug/
+    DebugOverlay.tsx   # fps, draw calls, state readout, ?debug=1 only
+    expose.ts          # window.__game bridge for agent verification
+public/models/         # .glb only
+```
+
+## R3F rules (these are the bugs you keep writing)
+
+1. **Never call `setState` or a zustand setter inside `useFrame`.** Mutate refs. Push to the store only on discrete events (prey caught, hunger crosses a threshold, save).
+2. **Multiple animated cats from one GLTF require `SkeletonUtils.clone(scene)`.** A plain `useGLTF` reuse shares the skeleton and every cat animates identically. This has broken this project before.
+3. **Hoist allocations out of `useFrame`.** Module-level `const _v = new THREE.Vector3()` reused every frame. No `new` inside the loop.
+4. **All motion is multiplied by `delta`.** Never assume 60fps in the math.
+5. **`useGLTF.preload()`** every model at module scope. One `<Suspense>` boundary in `App.tsx` with a loading screen, not per-component.
+6. **Foliage is instanced.** Individual `<mesh>` per tree is forbidden.
+
+## iPad Safari rules
+
+- `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">`
+- `touch-action: none` and `overscroll-behavior: none` on the canvas and all HUD controls. Otherwise dragging scrolls the page and the cat stops moving.
+- `<Canvas dpr={[1, 2]}>`. Never uncapped `devicePixelRatio`.
+- One directional light with one 1024 shadow map, or no shadows at all. No point-light shadows, no post-processing, no SSAO.
+- Audio cannot start without a user gesture. Initialize the audio context on the first tap of the title screen.
+- Touch targets are at least 44 CSS px.
+- `apple-mobile-web-app-capable` so Add to Home Screen runs it without Safari chrome.
+- **Assume nothing verified on desktop Chrome works on the iPad.** Safari is the test.
+
+## Performance budget
+
+| Metric | Ceiling |
+|---|---|
+| Draw calls | 100 |
+| Triangles | 150k |
+| Texture size | 1024x1024 |
+| Unique materials | 15 |
+
+## Assets
+
+Quaternius CC0 low-poly packs in `public/models/`, `.glb` format. There is no cat model in the pack: the Fox rig is the stand-in cat, recolored per character. Do not spend a session trying to model a cat. Do not generate placeholder cubes either, the fox is already there.
+
+Animation clip names come from the GLTF. Read them at runtime and log them, never guess the string.
+
+## Session workflow
+
+1. **Plan before code.** Propose the component tree and the state shape. Wait for approval. Do not write implementation in the same turn as the plan.
+2. **One system per session.** Movement, or hunting, or the HUD. Never two.
+3. **Verify it yourself in Chrome before saying anything works.** See Verification below. Never report a change as done based on the code reading correctly.
+4. **Every tunable number goes in `constants.ts` as a named export.** Speed, hunger rate, prey flee radius, camera distance. Phil tunes feel, not you.
+5. **Commit at every working state**, small messages, no squashing.
+6. **Ask before refactoring anything you did not write this session.**
+
+### Definition of done
+
+Two gates. Both required.
+
+| Gate | Who | Blocks |
+|---|---|---|
+| **Chrome self-verify** | You, every change, unprompted | Layout, logic, crashes, console errors, animation, input |
+| **iPad confirm** | Phil, before a system is called finished | Real touch, real Safari, real framerate |
+
+"The code compiles" and "typecheck passes" are not gates.
+
+## Verification
+
+You can run and drive the game. Use it. Do not ask Phil to check something you can check yourself.
+
+### The loop, every single change
+
+1. `npm run dev -- --host` and open `http://localhost:5173/?debug=1` in Chrome
+2. Emulate **iPad landscape (1180x820) with touch input enabled**. Never verify at a desktop viewport. Layout bugs only appear at the real aspect ratio.
+3. **Read the console first.** A silent shader compile failure or a failed `.glb` fetch renders a black canvas with no error thrown. Zero console errors or warnings is the bar.
+4. Screenshot. Actually look at it. A black canvas, a cat at the origin under the terrain, or a T-posed model are all "renders without crashing."
+5. Drive the thing you just built. Drag the joystick and confirm the cat moves. Tap the action button and confirm the state changes.
+6. Assert on state via `window.__game` rather than judging from pixels where possible.
+7. Only then report, and include what you observed, not what you expected.
+
+### Debug hooks (build these first, before any gameplay)
+
+- `?debug=1` enables the whole set. Off by default so her build stays clean.
+- `window.__game` exposes the zustand store: `getState()`, `setState()`, and a `teleport(x, z)` helper. This is how you set up a scenario without playing to it.
+- `window.__game.seed(n)` for deterministic prey spawns. Non-deterministic worlds cannot be verified.
+- An FPS and draw-call readout in the corner, from `gl.info.render`.
+- `stats.json` dumped to console on demand: position, needs, entity count.
+
+### What Chrome does not prove
+
+Desktop Chrome is not iPad Safari. It will hit 60fps on anything, so **the performance budget is unverified until Phil checks the iPad.** These also cannot be verified in Chrome and must be flagged for a real-device check:
+
+- `touch-action` and scroll-hijack behavior under real fingers
+- Audio unlock on first gesture
+- Safe-area insets under the home indicator
+- Actual GPU headroom and thermal throttling
+- Safari-specific WebGL and GLTF loading differences
+
+When you finish a system, say plainly: *"Verified in Chrome: X, Y, Z. Needs iPad check: framerate, touch feel."*
+
+## Design principles
+
+- **Fun beats simulation.** WolfQuest is a real ecology sim. This is not. If realistic hunger decay makes it tedious, make it generous.
+- **No fail states that punish.** No permadeath, no lost progress. Getting hurt sends the cat back to camp.
+- **Readable at a glance.** She should understand the state of the cat from across the room.
+- **Every action gets feedback within 100ms.** A sound, a wiggle, a particle. Silence reads as broken.
+- **HUD is minimal and diegetic where possible.** Two indicators (health, hunger), one action button. No menus, no tooltips, no tutorial text. If it needs explaining, redesign it.
+
+## Current scope: v1 vertical slice
+
+Build only this. Everything else is out of scope until she has played v1.
+
+- [ ] Cat moves with an on-screen joystick, walk and run animations blend by speed
+- [ ] Camera follows behind, drag the right half of the screen to orbit
+- [ ] One forest clearing, roughly 200m square, hand-placed
+- [ ] Health and hunger bars, hunger decays slowly
+- [ ] Mice that wander and flee on proximity
+- [ ] Crouch + pounce to catch a mouse, eating restores hunger
+- [ ] A camp marker that restores health when you rest there
+- [ ] Save to localStorage on a timer
+
+**Explicitly out of scope for v1:** clanmates, NPC dialogue, apprentices, patrols, territory scent marking, StarClan, weather, day/night, multiple maps, combat with other cats, character creation, quests.
+
+## Backlog (locked until v1 has been played)
+
+Ordered by joy per line of code. Do not start any of these unprompted.
+
+1. **Character creation.** Pelt color, eye color, and a name built from the Warrior Cats convention (prefix + `paw`). Materially just a material swap and a string, and it is the biggest identity hook in the project.
+2. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
+3. **Sound.** Meow, purr while resting, paws in leaf litter, birdsong ambience, a sting on a successful pounce. Silence is the single biggest reason a working game feels broken.
+4. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
+5. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
+6. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
+7. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
+8. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
+9. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
+
+## Commands
+
+```bash
+npm run dev -- --host    # serve on LAN
+npm run typecheck
+
+# http://localhost:5173/?debug=1   Chrome, iPad landscape emulation, touch on
+# http://<desktop-ip>:5173         the iPad, clean build
+```
