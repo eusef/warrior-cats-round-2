@@ -168,34 +168,40 @@ When you finish a system, say plainly: *"Verified in Chrome: X, Y, Z. Needs iPad
 - **Every action gets feedback within 100ms.** A sound, a wiggle, a particle. Silence reads as broken.
 - **HUD is minimal and diegetic where possible.** Two indicators (health, hunger), one action button. No menus, no tooltips, no tutorial text. If it needs explaining, redesign it.
 
-## Current scope: v1 vertical slice
+## v1 vertical slice: SHIPPED
 
-Build only this. Everything else is out of scope until she has played v1.
+Built, verified in Chrome, and confirmed playable on the iPad. Commit `8daf9ac`.
 
-- [ ] Cat moves with an on-screen joystick, walk and run animations blend by speed
-- [ ] Camera follows behind, drag the right half of the screen to orbit
-- [ ] One forest clearing, roughly 200m square, hand-placed
-- [ ] Health and hunger bars, hunger decays slowly
-- [ ] Mice that wander and flee on proximity
-- [ ] Crouch + pounce to catch a mouse, eating restores hunger
-- [ ] A camp marker that restores health when you rest there
-- [ ] Save to localStorage on a timer
+- [x] Cat moves with an on-screen joystick, walk and run animations blend by speed
+- [x] Camera follows behind, drag the right half of the screen to orbit
+- [x] One forest clearing, roughly 200m square
+- [x] Health and hunger bars, hunger decays slowly
+- [x] Mice that wander and flee on proximity
+- [x] Crouch + pounce to catch a mouse, eating restores hunger
+- [x] A camp marker that restores health when you rest there
+- [x] Save to localStorage on a timer
 
-**Explicitly out of scope for v1:** clanmates, NPC dialogue, apprentices, patrols, territory scent marking, StarClan, weather, day/night, multiple maps, combat with other cats, character creation, quests.
+Two honest deviations from the original wording, both deliberate:
 
-## Backlog (locked until v1 has been played)
+- **The clearing is seeded-procedural, not hand-placed.** Trees, ferns and rocks are scattered by `mulberry32(seed)` so `?debug=1` worlds are reproducible. Re-placing by hand is still open if the layout matters later.
+- **Ground height is one analytic function**, `groundHeightAt()`, shared by the terrain mesh and every actor, rather than the raycast-down the R3F rules call for. Same result, exact rather than approximate, and no per-frame ray cost with fifteen entities sampling it. Keep this in mind before writing a raycast.
 
-Ordered by joy per line of code. Do not start any of these unprompted.
+**Deliberately excluded from v1, and still excluded unless promoted from the backlog:** clanmates, NPC dialogue, apprentices, patrols, territory scent marking, StarClan, weather, day/night, multiple maps, combat with other cats, character creation, quests.
 
-1. **Character creation.** Pelt color, eye color, and a name built from the Warrior Cats convention (prefix + `paw`). Materially just a material swap and a string, and it is the biggest identity hook in the project.
-2. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
-3. **Sound.** Meow, purr while resting, paws in leaf litter, birdsong ambience, a sting on a successful pounce. Silence is the single biggest reason a working game feels broken.
-4. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
-5. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
-6. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
-7. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
-8. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
-9. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
+## Backlog
+
+Unlocked: she has played v1. Still ordered by joy per line of code, and still **do not start any of these unprompted** — Phil picks what comes next.
+
+1. **Finding camp.** There is currently no way to locate camp from across the map: no marker, no compass, and the terrain is deliberately uniform. She has to recognise trees. This did not matter until camp became the only way to heal, and now it does. Diegetic first, per the HUD rule: something about the camp readable at distance rather than an arrow stuck on the screen. Options worth trying in order of preference: a soft glow or light shaft over the clearing that stays visible through the trees, birds circling above it, or the ring brightening as she nears. Fall back to a HUD indicator only if none of those read from 80m. Camp is at a fixed `CAMP_POS`, so the direction is one `atan2`; the entire cost of this feature is deciding how it looks.
+2. **Character creation.** Pelt color, eye color, and a name built from the Warrior Cats convention (prefix + `paw`). Materially just a material swap and a string, and it is the biggest identity hook in the project.
+3. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
+4. **Sound.** Meow, purr while resting, paws in leaf litter, birdsong ambience, a sting on a successful pounce. Silence is the single biggest reason a working game feels broken.
+5. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
+6. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
+7. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
+8. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
+9. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
+10. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
 
 ## Commands
 
