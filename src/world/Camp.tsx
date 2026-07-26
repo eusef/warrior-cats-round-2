@@ -11,6 +11,7 @@ import {
 import { live } from '../game/live'
 import { groundHeightAt } from '../game/terrain'
 import { mulberry32 } from '../game/rng'
+import { CampBeacon } from './CampBeacon'
 
 const BOULDERS = 18
 const _m = new THREE.Matrix4()
@@ -110,6 +111,10 @@ export function Camp() {
       >
         <meshLambertMaterial color="#7c7d75" />
       </instancedMesh>
+
+      {/* Nothing else at camp stands taller than a 0.75m boulder, so this is
+          the only part of it visible from across the map. */}
+      <CampBeacon />
     </group>
   )
 }

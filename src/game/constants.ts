@@ -84,6 +84,37 @@ export const CAMP_RING_OPACITY_IDLE = 0.3
 export const CAMP_RING_OPACITY_RESTING = 0.8
 export const CAMP_REST_HUNGER_MULT = 0.4 // hunger decays slower while resting
 
+// Camp beacon: a shaft of sunlight standing in the clearing. This is the only
+// way to find camp from across the map, so it is tuned for legibility at range
+// rather than realism. Trees top out at 12m (canopy cone apex 8.0 * TREE_MAX_SCALE)
+// and camp sits in a flattened bowl, so the beam has to clear the treeline by a
+// wide margin. FOLIAGE_CLEARING_RADIUS guarantees nothing grows in its way.
+export const CAMP_BEACON_HEIGHT = 38 // metres tall; ~3x the tallest tree
+export const CAMP_BEACON_RADIUS_TOP = 1.5
+export const CAMP_BEACON_RADIUS_BOTTOM = 3.8 // widens downward, like a real sun shaft
+// Saturated warm gold. Verified in Chrome: additive blending looked better over
+// the dark trees but vanished completely against the bright sky, which is the
+// part above the treeline that actually does the wayfinding. Normal blending
+// with a saturated colour tints the sky instead of adding to it, so the beam
+// reads against both.
+export const CAMP_BEACON_COLOR = '#ffc247'
+export const CAMP_BEACON_OPACITY = 0.5 // at full strength, seen from far away
+export const CAMP_BEACON_FADE_NEAR = 16 // metres: invisible at/below this, she has arrived
+export const CAMP_BEACON_FADE_FAR = 44 // metres: full strength at/above this
+export const CAMP_BEACON_FADE_LERP = 4 // higher = the beam pops in faster as she leaves
+// The beam is solid up to this fraction of its height, then dissolves into sky.
+// 0.35 of 38m = 13.3m, which keeps it opaque past the 12m treeline.
+export const CAMP_BEACON_SOLID_FRACTION = 0.35
+export const CAMP_BEACON_SPIN_SPEED = 0.07 // radians/sec; a slow shimmer, not a rotation
+export const CAMP_BEACON_SHIMMER = 0.22 // 0 = an even column, 1 = strongly banded
+// The backlog asks for a shaft that "stays visible through the trees". A single
+// depth-tested beam does not: verified in Chrome at 80m, one near tree hid all
+// but a sliver of it. So the beam draws a second time with depth testing off, at
+// this fraction of its opacity, which reads as light diffusing through canopy.
+// Raise it if she still loses camp behind a trunk; drop it toward 0 if it starts
+// looking like a decal painted on the screen.
+export const CAMP_BEACON_GHOST_OPACITY = 0.3
+
 // ---------------------------------------------------------------------------
 // Prey (mice)
 // ---------------------------------------------------------------------------

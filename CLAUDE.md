@@ -98,7 +98,13 @@ public/models/         # .glb only
 | Draw calls | 100 |
 | Triangles | 150k |
 | Texture size | 1024x1024 |
-| Unique materials | 15 |
+| Unique materials | 16 |
+
+Raised from 15 to 16 for the camp beacon, which draws its shaft twice: once
+depth-tested and once with depth testing off so it stays visible through the
+trees. Measured at the same time: 21 draw calls and 46k triangles, both far
+inside budget. Material count is a proxy for shader-program switches, not a hard
+GPU limit, so the two-pass beam was worth the one extra slot.
 
 ## Assets
 
@@ -192,7 +198,7 @@ Two honest deviations from the original wording, both deliberate:
 
 Unlocked: she has played v1. Still ordered by joy per line of code, and still **do not start any of these unprompted** — Phil picks what comes next.
 
-1. **Finding camp.** There is currently no way to locate camp from across the map: no marker, no compass, and the terrain is deliberately uniform. She has to recognise trees. This did not matter until camp became the only way to heal, and now it does. Diegetic first, per the HUD rule: something about the camp readable at distance rather than an arrow stuck on the screen. Options worth trying in order of preference: a soft glow or light shaft over the clearing that stays visible through the trees, birds circling above it, or the ring brightening as she nears. Fall back to a HUD indicator only if none of those read from 80m. Camp is at a fixed `CAMP_POS`, so the direction is one `atan2`; the entire cost of this feature is deciding how it looks.
+1. ~~**Finding camp.**~~ **DONE** — a shaft of sunlight in the clearing, `src/world/CampBeacon.tsx`. Diegetic, no HUD indicator needed. Verified in Chrome at 80m and at 140m from the far corner; fades out inside 16m and hands off to the ground ring. Two things worth knowing before touching it: the beam sets `fog={false}` because scene fog would erase it past 55m, and it draws its shaft **twice**, the second pass with `depthTest: false`, because a single depth-tested beam disappeared behind any tree that lined up with it. That second pass is the whole reason it is findable, not a nicety. Still needs the iPad pass for framerate and how bright it reads on a real screen.
 2. **Character creation.** Pelt color, eye color, and a name built from the Warrior Cats convention (prefix + `paw`). Materially just a material swap and a string, and it is the biggest identity hook in the project.
 3. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
 4. **Sound.** Meow, purr while resting, paws in leaf litter, birdsong ambience, a sting on a successful pounce. Silence is the single biggest reason a working game feels broken.
