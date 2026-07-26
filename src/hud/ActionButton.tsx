@@ -49,7 +49,14 @@ export function ActionButton({ labelRef }: Props) {
         background: 'radial-gradient(circle at 35% 30%, #d8a24e, #a9631f)',
         boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
         color: '#fffaf0',
-        font: '700 15px/1.1 inherit',
+        // A button does not inherit the page font on its own, and the `font:`
+        // shorthand cannot take `inherit` as its family: that form is invalid
+        // and gets dropped, which is how this label sat at 16px/400 system
+        // sans instead of the rounded game face.
+        fontFamily: 'inherit',
+        fontSize: 15,
+        fontWeight: 700,
+        lineHeight: 1.1,
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
         display: 'flex',

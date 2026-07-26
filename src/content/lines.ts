@@ -30,3 +30,45 @@ export const CAMP_LINES = [
 ] as const
 
 export const TITLE_HINT = 'Tap to begin'
+
+// ---------------------------------------------------------------------------
+// Character creation
+// ---------------------------------------------------------------------------
+
+/**
+ * Apprentice name prefixes. Warrior Cats convention: an apprentice is
+ * <Prefix>paw, and the ceremony in the backlog swaps `paw` for a suffix later.
+ *
+ * Hand-written and closed, like every other string here. Never reorder: a save
+ * stores the index. Append to the end if you add more.
+ */
+export const NAME_PREFIXES = [
+  'Fire',
+  'Blue',
+  'Bramble',
+  'Dove',
+  'Holly',
+  'Ash',
+  'Fern',
+  'Frost',
+  'Robin',
+  'Sand',
+  'Thistle',
+  'Willow',
+] as const
+
+export const APPRENTICE_SUFFIX = 'paw'
+
+export const CREATE_TITLE = 'Make your cat'
+export const CREATE_PELT_LABEL = 'Pelt'
+export const CREATE_EYES_LABEL = 'Eyes'
+export const CREATE_NAME_LABEL = 'Name'
+export const CREATE_BEGIN = 'Begin'
+
+/**
+ * Fixed template, one slot, filled only from NAME_PREFIXES above. Every string
+ * it can produce is enumerable from this file. No generated text.
+ */
+export function nameToast(name: string): string {
+  return `You are ${name}.`
+}

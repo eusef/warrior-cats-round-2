@@ -11,6 +11,7 @@ import { PlayerCat } from './actors/PlayerCat'
 import { Prey } from './actors/Prey'
 import { FollowCamera } from './actors/FollowCamera'
 import { Hud } from './hud/Hud'
+import { CreateCat } from './ui/CreateCat'
 import { DebugOverlay, DebugSampler } from './debug/DebugOverlay'
 import { DEBUG } from './debug/expose'
 import { TITLE_HINT } from './content/lines'
@@ -45,6 +46,7 @@ export function App() {
       </Canvas>
 
       <Hud />
+      <CreateCat />
       <DebugOverlay />
       <TitleScreen />
     </>
@@ -55,6 +57,9 @@ export function App() {
  * Covers the canvas until the first tap. That tap is also the user gesture the
  * audio context will need when sound lands (backlog item 3), which is why it
  * exists at all rather than dropping straight into play.
+ *
+ * `start()` reads the save and routes: a cat she has already made goes straight
+ * to play, no cat sends her to creation.
  */
 function TitleScreen() {
   const phase = useGame((s) => s.phase)
@@ -84,8 +89,16 @@ function TitleScreen() {
       }}
     >
       <div style={{ fontSize: 68 }}>🐾</div>
-      <div style={{ font: '700 44px/1 inherit', letterSpacing: '0.02em' }}>Warrior Cats</div>
-      <div style={{ font: '500 22px/1 inherit', opacity: 0.72 }}>{TITLE_HINT}</div>
+      {/* Never use the `font:` shorthand with `inherit` as the family. It is not
+          a legal value there, so the browser drops the whole declaration and
+          the text silently renders at 16px/400. This title did exactly that
+          from v1 until it was caught in Chrome. */}
+      <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, letterSpacing: '0.02em' }}>
+        Warrior Cats
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 500, lineHeight: 1, opacity: 0.72 }}>
+        {TITLE_HINT}
+      </div>
     </div>
   )
 }

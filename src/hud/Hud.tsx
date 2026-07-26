@@ -14,6 +14,11 @@ import { Joystick } from './Joystick'
  * HUD costs the React tree nothing while the game is running.
  */
 export function Hud() {
+  // The bars and buttons are hidden outside play so they never sit on top of
+  // the title or the creation sheet. The input layer below stays mounted
+  // regardless: useTouchInput binds to it once, and unmounting it would drop
+  // the listeners the joystick depends on.
+  const playing = useGame((s) => s.phase === 'playing')
   const layerRef = useRef<HTMLDivElement>(null)
   const healthFill = useRef<HTMLDivElement>(null)
   const hungerFill = useRef<HTMLDivElement>(null)
@@ -85,38 +90,43 @@ export function Hud() {
         }}
       />
 
-      <div
-        ref={vignette}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          pointerEvents: 'none',
-          opacity: 0,
-          background:
-            'radial-gradient(ellipse at center, rgba(0,0,0,0) 42%, rgba(90,20,10,0.85) 100%)',
-          zIndex: 15,
-          transition: 'opacity 300ms linear',
-        }}
-      />
+      {playing && (
+        <>
+          <div
+            ref={vignette}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              pointerEvents: 'none',
+              opacity: 0,
+              background:
+                'radial-gradient(ellipse at center, rgba(0,0,0,0) 42%, rgba(90,20,10,0.85) 100%)',
+              zIndex: 15,
+              transition: 'opacity 300ms linear',
+            }}
+          />
 
-      <div
-        style={{
-          position: 'fixed',
-          top: 'calc(18px + var(--safe-top))',
-          left: 'calc(20px + var(--safe-left))',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          pointerEvents: 'none',
-          zIndex: 25,
-        }}
-      >
-        <NeedBar icon="❤️" color="#e05a48" fillRef={healthFill} />
-        <NeedBar icon="🐭" color="#e0a038" fillRef={hungerFill} pillRef={hungerPill} />
-      </div>
+          <div
+            style={{
+              position: 'fixed',
+              top: 'calc(18px + var(--safe-top))',
+              left: 'calc(20px + var(--safe-left))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              pointerEvents: 'none',
+              zIndex: 25,
+            }}
+          >
+            <NeedBar icon="❤️" color="#e05a48" fillRef={healthFill} />
+            <NeedBar icon="🐭" color="#e0a038" fillRef={hungerFill} pillRef={hungerPill} />
+          </div>
 
-      <Joystick baseRef={stickBase} knobRef={stickKnob} />
-      <ActionButton labelRef={actionLabel} />
+          <Joystick baseRef={stickBase} knobRef={stickKnob} />
+          <ActionButton labelRef={actionLabel} />
+        </>
+      )}
+
       <Toast />
     </>
   )
@@ -193,7 +203,12 @@ function Toast() {
         borderRadius: 22,
         background: 'rgba(18,28,14,0.82)',
         border: '2px solid rgba(255,255,255,0.35)',
-        font: '600 20px/1 inherit',
+        // Not `font: '600 20px/1 inherit'`: `inherit` is not a legal family
+        // inside the shorthand, so that form is dropped entirely and lands at
+        // 16px/400.
+        fontSize: 20,
+        fontWeight: 600,
+        lineHeight: 1,
         letterSpacing: '0.01em',
         pointerEvents: 'none',
         zIndex: 40,

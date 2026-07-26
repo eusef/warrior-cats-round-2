@@ -1,5 +1,5 @@
 import { live, resetLive } from '../game/live'
-import { useGame } from '../game/store'
+import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
 import { NEED_MAX } from '../game/constants'
 import { input, setActionHeld } from '../input/useTouchInput'
@@ -16,6 +16,8 @@ export const DEBUG =
 export const debugHooks: {
   dumpPrey?: () => unknown[]
   forcePreyNear?: (dist: number) => number
+  /** Colours actually on the cat's materials, not what the store thinks. */
+  catColors?: () => Record<string, string>
 } = {}
 
 export interface GameBridge {
@@ -35,6 +37,10 @@ export interface GameBridge {
   input: typeof input
   stick: (x: number, y: number) => void
   hold: (held: boolean) => void
+  identity: () => Record<string, unknown>
+  setIdentity: (patch: Partial<Identity>) => void
+  beginPlay: () => void
+  catColors: () => Record<string, string>
   /** Installed by DebugSampler once the R3F root exists. */
   step?: (count?: number, dt?: number) => number
 }
@@ -75,6 +81,8 @@ export function installBridge() {
         hunger: round2(live.hunger),
         huntCount: useGame.getState().huntCount,
         phase: useGame.getState().phase,
+        name: catName(useGame.getState().identity),
+        colors: debugHooks.catColors?.() ?? {},
         action: live.cat.action,
         pos: {
           x: round2(live.cat.pos.x),
@@ -113,6 +121,14 @@ export function installBridge() {
       input.moveMag = Math.min(1, Math.hypot(x, y))
     },
     hold: (held: boolean) => setActionHeld(held),
+
+    identity: () => {
+      const g = useGame.getState()
+      return { ...g.identity, name: catName(g.identity), chosen: g.identityChosen }
+    },
+    setIdentity: (patch) => useGame.getState().setIdentity(patch),
+    beginPlay: () => useGame.getState().beginPlay(),
+    catColors: () => debugHooks.catColors?.() ?? {},
   }
 
   ;(window as unknown as { __game: GameBridge }).__game = bridge

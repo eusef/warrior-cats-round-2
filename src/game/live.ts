@@ -40,6 +40,8 @@ export const live = {
     /** Orbit yaw offset applied on top of the cat's heading. */
     yaw: 0,
     pitch: 0.16,
+    /** Set for one frame to place the camera instantly instead of lerping. */
+    snap: false,
   },
 
   /** True while the cat is inside the camp radius and not moving. */
@@ -69,6 +71,7 @@ export function resetLive(health = CAT_START_HEALTH, hunger = CAT_START_HUNGER) 
   live.cat.action = 'idle'
   live.camera.yaw = 0
   live.camera.pitch = 0.16
+  live.camera.snap = true
   live.resting = false
 }
 

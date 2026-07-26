@@ -26,11 +26,61 @@ export const CAT_CROUCH_SPEED_MULT = 0.38 // movement multiplier while stalking
 // The Quaternius fox is authored at 5.88 units nose-to-tail. 0.14 lands it at
 // ~0.82m long, which reads as a cat next to the trees. Tuned by eye, not by biology.
 export const CAT_SCALE = 0.14
-export const CAT_PELT_COLOR = '#c8763a' // Main
-export const CAT_PELT_LIGHT = '#f0e0c8' // Main_Light (chest, muzzle, tail tip)
-export const CAT_EYE_COLOR = '#7fd45c'
 // The GLB's rest pose faces +Z; our yaw convention has 0 = -Z. Verified in Chrome.
 export const CAT_MODEL_YAW_OFFSET = Math.PI
+
+// ---------------------------------------------------------------------------
+// Character creation
+// ---------------------------------------------------------------------------
+// The palette she picks from. `main` and `light` map onto the fox GLB's "Main"
+// and "Main_Light" materials; light is the chest, muzzle and tail tip. Index 0
+// is the ginger cat the game shipped with, so an old save that predates
+// creation looks exactly as it did.
+//
+// Saves store the INDEX, not the hex, so retuning a colour here updates the cat
+// she already made. Never reorder this list: it would repaint her cat.
+export interface Pelt {
+  label: string
+  main: string
+  light: string
+}
+
+export const PELTS: readonly Pelt[] = [
+  { label: 'Ginger', main: '#c8763a', light: '#f0e0c8' },
+  { label: 'Grey', main: '#7c8792', light: '#dee4ea' },
+  { label: 'Black', main: '#3b3b45', light: '#71717e' },
+  { label: 'White', main: '#ece5d6', light: '#ffffff' },
+  { label: 'Tabby', main: '#8a6136', light: '#d9c39a' },
+  { label: 'Cream', main: '#e0b984', light: '#f8eeda' },
+]
+
+export const EYE_COLORS: readonly { label: string; color: string }[] = [
+  { label: 'Green', color: '#7fd45c' },
+  { label: 'Amber', color: '#f0a51e' },
+  { label: 'Blue', color: '#58a8e8' },
+  { label: 'Copper', color: '#d1622a' },
+]
+
+export const DEFAULT_PELT = 0
+export const DEFAULT_EYES = 0
+export const DEFAULT_PREFIX = 0
+
+// The creation screen parks the camera close in on the cat. The look point sits
+// BELOW her feet on purpose: that pushes the cat into the upper part of the
+// frame, clear of the choices sheet along the bottom. Tuned by screenshot at
+// 1180x820 — at the first pass (2.8m) the cat was a 110px smudge on the screen
+// whose entire job is to show her the cat.
+export const CREATE_CAM_DISTANCE = 1.75 // metres
+export const CREATE_CAM_HEIGHT = 0.45 // metres above the cat's feet
+export const CREATE_CAM_LOOK_HEIGHT = -0.16 // metres; negative aims under the feet
+export const CREATE_CAM_ORBIT_SPEED = 0.42 // radians/sec; a full turn every ~15s
+// Camp is flat and the camera is only 1.75m out, so the play-mode clearance
+// (0.7m) would shove the camera up above CREATE_CAM_HEIGHT and undo the framing.
+export const CREATE_CAM_MIN_CLEARANCE = 0.3
+// Yaw the orbit starts at. 0 is directly behind the cat, which meant she met her
+// new cat tail-first. Just past PI is a three-quarter view of the face.
+export const CREATE_CAM_START_YAW = Math.PI * 0.82
+export const CREATE_SHEET_HEIGHT = 300 // CSS px the choices sheet occupies
 
 // Animation blending
 export const ANIM_FADE = 0.18 // seconds to cross-fade between clips

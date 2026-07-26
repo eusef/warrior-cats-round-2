@@ -7,11 +7,8 @@ import {
   CAT_ACCEL,
   CAT_CROUCH_SPEED_MULT,
   CAT_DECEL,
-  CAT_EYE_COLOR,
   CAT_GROUND_OFFSET,
   CAT_MODEL_YAW_OFFSET,
-  CAT_PELT_COLOR,
-  CAT_PELT_LIGHT,
   CAT_RUN_SPEED,
   CAT_SCALE,
   CAT_TURN_SPEED,
@@ -28,13 +25,16 @@ import {
   SAVE_INTERVAL_SEC,
   WORLD_EDGE_MARGIN,
   WORLD_HALF,
+  EYE_COLORS,
+  PELTS,
 } from '../game/constants'
 import { live, resetLive } from '../game/live'
 import { feed, tickNeeds } from '../game/needs'
-import { useGame } from '../game/store'
+import { useGame, type Identity } from '../game/store'
 import { clamp, distToCamp, groundHeightAt } from '../game/terrain'
 import { input } from '../input/useTouchInput'
 import { treeColliders } from '../world/Foliage'
+import { debugHooks } from '../debug/expose'
 import { preyRegistry } from './preyRegistry'
 import { useCatAnimation } from './useCatAnimation'
 import { CAMP_LINES, CATCH_LINES, EAT_LINES, HUNGER_LINES } from '../content/lines'
@@ -46,39 +46,73 @@ useGLTF.preload(MODEL_URL)
 const _dir = new THREE.Vector2()
 const _desired = new THREE.Vector2()
 
+/** The three GLB material slots character creation paints. */
+interface PeltSlots {
+  main: THREE.MeshStandardMaterial[]
+  light: THREE.MeshStandardMaterial[]
+  eyes: THREE.MeshStandardMaterial[]
+}
+
+/**
+ * Discrete, not per-frame: this runs on a swatch tap, never in useFrame.
+ * `color.set` on an existing material costs nothing and adds no draw call, so
+ * the whole of character creation is free at runtime.
+ */
+function paint(slots: PeltSlots, id: Identity) {
+  const pelt = PELTS[id.pelt] ?? PELTS[0]
+  const eye = EYE_COLORS[id.eyes] ?? EYE_COLORS[0]
+  for (const m of slots.main) m.color.set(pelt.main)
+  for (const m of slots.light) m.color.set(pelt.light)
+  for (const m of slots.eyes) m.color.set(eye.color)
+}
+
 export function PlayerCat() {
   const group = useRef<THREE.Group>(null)
   const { scene, animations } = useGLTF(MODEL_URL)
+  const identity = useGame((s) => s.identity)
 
   // SkeletonUtils.clone is mandatory here: a plain useGLTF reuse shares the
   // skeleton, and every cat would animate identically. Also keeps StrictMode's
   // double mount from attaching the same scene graph twice.
-  const model = useMemo(() => {
+  const { model, slots } = useMemo(() => {
     const cloned = skeletonClone(scene) as THREE.Group
+    const found: PeltSlots = { main: [], light: [], eyes: [] }
     cloned.traverse((o) => {
       const mesh = o as THREE.Mesh
       if (!mesh.isMesh) return
       mesh.castShadow = true
       mesh.receiveShadow = false
       mesh.frustumCulled = false // skinned bounds go stale mid-animation
-      // Clone the materials so recolouring one cat never tints another.
+      // Clone the materials so recolouring one cat never tints another, and
+      // keep a handle on each one so creation can repaint it on a tap.
       const src = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[]
-      const recolor = (m: THREE.MeshStandardMaterial) => {
+      const track = (m: THREE.MeshStandardMaterial) => {
         const c = m.clone()
-        if (m.name === 'Main') c.color.set(CAT_PELT_COLOR)
-        else if (m.name === 'Main_Light') c.color.set(CAT_PELT_LIGHT)
-        else if (m.name === 'Eyes') c.color.set(CAT_EYE_COLOR)
+        if (m.name === 'Main') found.main.push(c)
+        else if (m.name === 'Main_Light') found.light.push(c)
+        else if (m.name === 'Eyes') found.eyes.push(c)
         return c
       }
-      mesh.material = Array.isArray(src) ? src.map(recolor) : recolor(src)
+      mesh.material = Array.isArray(src) ? src.map(track) : track(src)
     })
-    return cloned
+    return { model: cloned, slots: found }
   }, [scene])
+
+  // Only fires when the identity object actually changes, which is a swatch tap
+  // or a load. Never during play.
+  useEffect(() => {
+    paint(slots, identity)
+  }, [slots, identity])
 
   const animator = useCatAnimation(model, animations)
   const saveTimer = useRef(0)
   const pounceResolved = useRef(false)
-  const wasResting = useRef(false)
+  // Seeded true, not false. The cat spawns standing in camp, so a false seed
+  // fired "Resting at camp." on the first frame of play, which both said
+  // nothing (she has not gone anywhere yet) and instantly overwrote the
+  // "You are <Name>." beat that creation had just earned. The camp line now
+  // waits for a real arrival.
+  const wasResting = useRef(true)
   const restCount = useRef(0)
 
   useEffect(() => {
@@ -88,6 +122,19 @@ export function PlayerCat() {
       useGame.getState().save()
     }
   }, [])
+
+  // Lets verification read the colours actually on the GPU-bound materials
+  // instead of trusting the store, which is the only claim worth making.
+  useEffect(() => {
+    debugHooks.catColors = () => ({
+      main: hexOf(slots.main[0]),
+      light: hexOf(slots.light[0]),
+      eyes: hexOf(slots.eyes[0]),
+    })
+    return () => {
+      debugHooks.catColors = undefined
+    }
+  }, [slots])
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05)
@@ -291,4 +338,8 @@ function pushOutOfTrees(pos: THREE.Vector3) {
 
 function pick<T>(arr: readonly T[], n: number): T {
   return arr[Math.abs(n) % arr.length]
+}
+
+function hexOf(m: THREE.MeshStandardMaterial | undefined): string {
+  return m ? `#${m.color.getHexString()}` : 'none'
 }
