@@ -88,7 +88,8 @@ public/models/         # .glb only
 - `touch-action: none` and `overscroll-behavior: none` on the canvas and all HUD controls. Otherwise dragging scrolls the page and the cat stops moving.
 - `<Canvas dpr={[1, 2]}>`. Never uncapped `devicePixelRatio`.
 - One directional light with one 1024 shadow map, or no shadows at all. No point-light shadows, no post-processing, no SSAO.
-- Audio cannot start without a user gesture. Initialize the audio context on the first tap of the title screen.
+- Audio cannot start without a user gesture. Initialize the audio context on the first tap of the title screen. Creating and resuming it is **not** enough on iOS: Safari only hands over the output once a buffer has actually been played from inside that gesture, so `unlockAudio()` plays one silent sample there.
+- **Low Power Mode silences WebAudio**, ringer on and volume up notwithstanding. This cost a debugging round on an iPhone before the device was even the target. Check the battery icon before touching the audio code. `?debug=1` reads out context state, master-bus RMS and cue counts precisely so this is a ten-second check rather than a guess.
 - Touch targets are at least 44 CSS px.
 - `apple-mobile-web-app-capable` so Add to Home Screen runs it without Safari chrome.
 - **Assume nothing verified on desktop Chrome works on the iPad.** Safari is the test.
