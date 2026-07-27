@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { CAT_SPAWN, CAT_START_HEALTH, CAT_START_HUNGER, NEED_MAX } from './constants'
+import { CAM_DISTANCE, CAT_SPAWN, CAT_START_HEALTH, CAT_START_HUNGER, NEED_MAX } from './constants'
 import { groundHeightAt } from './terrain'
 
 export type CatAction = 'idle' | 'walk' | 'run' | 'crouch' | 'pounce' | 'eat' | 'rest'
@@ -42,6 +42,8 @@ export const live = {
     pitch: 0.16,
     /** Set for one frame to place the camera instantly instead of lerping. */
     snap: false,
+    /** Current follow distance, opened up by the speed dolly. Read-only outside FollowCamera. */
+    dist: CAM_DISTANCE,
   },
 
   /** True while the cat is inside the camp radius and not moving. */
@@ -72,6 +74,7 @@ export function resetLive(health = CAT_START_HEALTH, hunger = CAT_START_HUNGER) 
   live.camera.yaw = 0
   live.camera.pitch = 0.16
   live.camera.snap = true
+  live.camera.dist = CAM_DISTANCE
   live.resting = false
 }
 

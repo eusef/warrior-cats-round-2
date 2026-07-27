@@ -106,6 +106,15 @@ export const CAM_FOV = 62
 export const CAM_NEAR = 0.3
 export const CAM_FAR = 320
 export const CAM_MIN_GROUND_CLEARANCE = 0.7 // camera never dips below terrain + this
+// The aim point trails the cat instead of being nailed to her. Below about 5
+// the horizon visibly swims when she turns; above about 12 there is nothing to
+// see. This is the whole of "camera lag": the position already eased, but the
+// lookAt was exact, which is what made hard turns feel rigid.
+export const CAM_LOOK_LAG = 7.5
+// Extra metres the camera eases back at full run. Deliberately small: this is a
+// 0.82m cat at 4.2m, so a big dolly shrinks her rather than reading as speed.
+export const CAM_SPEED_DOLLY = 1.1
+export const CAM_DOLLY_LAG = 1.8 // higher = the dolly opens and closes faster
 
 // ---------------------------------------------------------------------------
 // Needs
@@ -218,6 +227,68 @@ export const SAVE_INTERVAL_SEC = 10
 export const TOAST_DURATION = 1.8 // seconds a HUD toast stays up
 export const CEREMONY_LINE_DELAY = 1.15 // seconds between ceremony lines landing
 export const CEREMONY_AUTO_DISMISS = 12 // seconds before the ceremony closes itself
+
+// ---------------------------------------------------------------------------
+// Juice
+//
+// Procedural motion laid on top of the GLB clips: tail, ears, and the squash on
+// a pounce landing. It is applied AFTER the AnimationMixer has written the pose
+// for the frame, because the mixer rewrites every bone quaternion from the clip
+// every frame. Applied before, none of this exists.
+//
+// The Fox rig's bones each extend along their own local +Y (verified from the
+// GLB: every child sits at (0, L, 0) in its parent), so local Z is the
+// side-to-side swing and local X is the up/down bend. Tail1 and Ear1 are the
+// bases of their chains, Tail8 and Ear4 the tips.
+// ---------------------------------------------------------------------------
+
+// Tail. Every angle here is the TOTAL deflection at the tip, in radians, and
+// the code normalises the eight-bone ramp so that stays true. Rotations
+// compound down a chain, so a per-bone value would mean 4.5x what it says: the
+// first pass set crouch droop to -0.3 and bent the tail 77 degrees, folding it
+// inside the body where it could not be seen at all.
+export const TAIL_SWAY_IDLE = 0.34 // ~19 deg; a standing cat's tail is never quite still
+export const TAIL_SWAY_RUN = 0.7 // ~40 deg
+export const TAIL_WAVE_RATE_IDLE = 1.7 // radians/sec the travelling wave advances
+export const TAIL_WAVE_RATE_RUN = 5.5
+export const TAIL_WAVE_LAG = 0.55 // radians of phase offset per bone; 0 = a rigid wag
+// The tip swings out against a hard turn and takes a moment to catch up. This
+// is the single term that reads most like an animal rather than a puppet.
+export const TAIL_TURN_AMOUNT = 0.8 // ~46 deg at a full-speed 90 degree turn
+export const TAIL_TURN_REF = 4.0 // rad/sec of yaw that counts as a full-strength turn
+export const TAIL_TURN_LAG = 6 // higher = the counter-swing settles faster
+export const TAIL_LIFT_RUN = 1.0 // ~57 deg; tail streams up behind a running cat
+export const TAIL_LIFT_CROUCH = -0.5 // ~29 deg down while stalking
+export const TAIL_LIFT_LAG = 3.5
+
+// Ears. A flick fires on a random timer while she is standing still, one ear at
+// a time, never both: two ears twitching together reads as a glitch.
+export const EAR_FLICK_MIN_GAP = 2.2 // seconds
+export const EAR_FLICK_MAX_GAP = 6.5
+export const EAR_FLICK_DURATION = 0.34
+// Unlike the tail these are the angle at the BASE of the ear, not the total:
+// the chain is only two bones deep, so the tip lands at 1 + EAR_TIP_FOLLOW
+// times these.
+export const EAR_FLICK_AMOUNT = 0.5 // radians at the peak of the twitch
+export const EAR_FLICK_WOBBLES = 2.5 // half-cycles inside one flick
+export const EAR_FLATTEN_CROUCH = 0.42 // radians the ears lay back while stalking
+export const EAR_FLATTEN_LAG = 7
+export const EAR_TIP_FOLLOW = 0.55 // fraction of the base angle the next segment adds
+
+// Squash. A damped spring on the model's scale, fired on touchdown from a
+// pounce. Stiffness 190 gives a ~0.45s period and damping 15 leaves it
+// underdamped, so it lands with one visible bounce rather than a dead stop.
+export const SQUASH_LAND_IMPULSE = 3.2 // scale-units/sec of compression on landing
+export const SQUASH_STIFFNESS = 190
+export const SQUASH_DAMPING = 15
+export const SQUASH_MAX = 0.28 // hard clamp; a safety net, not the shape
+export const SQUASH_AIR_STRETCH = 0.14 // vertical stretch at the top of the arc
+export const SQUASH_AIR_LAG = 12
+// Metres of hop that count as "properly airborne", which is what arms the
+// landing. A hop that never clears this lands without a squash, so a scuffed
+// half-pounce does not thump.
+export const SQUASH_AIR_MIN = 0.15
+export const SQUASH_WIDTH_RATIO = 0.55 // how much of the vertical change goes to width
 
 // ---------------------------------------------------------------------------
 // Input

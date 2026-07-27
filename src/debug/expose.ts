@@ -34,6 +34,10 @@ export const debugHooks: {
   forcePreyNear?: (dist: number) => number
   /** Colours actually on the cat's materials, not what the store thinks. */
   catColors?: () => Record<string, string>
+  /** Tail, ear and squash values the juice pass applied this frame. */
+  juice?: () => Record<string, unknown>
+  /** Turns the juice pass off live, to A/B it against the raw clips. */
+  setJuice?: (on: boolean) => void
 } = {}
 
 export interface GameBridge {
@@ -57,6 +61,14 @@ export interface GameBridge {
   setIdentity: (patch: Partial<Identity>) => void
   beginPlay: () => void
   catColors: () => Record<string, string>
+  /**
+   * Procedural motion is the one system where a screenshot cannot tell a
+   * working feature from one tuned an order of magnitude too low. These are the
+   * angles actually applied to the bones this frame.
+   */
+  juice: () => Record<string, unknown>
+  /** `__game.setJuice(false)` reverts the cat to the raw baked clips. */
+  setJuice: (on: boolean) => void
   /** Opens the warrior ceremony now, without hunting to the threshold. */
   promote: () => void
   /** Closes it, the way the Continue tap does. */
@@ -165,6 +177,11 @@ export function installBridge() {
     setIdentity: (patch) => useGame.getState().setIdentity(patch),
     beginPlay: () => useGame.getState().beginPlay(),
     catColors: () => debugHooks.catColors?.() ?? {},
+    juice: () => ({
+      ...(debugHooks.juice?.() ?? {}),
+      camDist: round2(live.camera.dist),
+    }),
+    setJuice: (on: boolean) => debugHooks.setJuice?.(on),
     promote: () => useGame.getState().promote(),
     endCeremony: () => useGame.getState().endCeremony(),
     ceremony: () => {

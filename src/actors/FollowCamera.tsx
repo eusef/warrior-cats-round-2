@@ -1,14 +1,19 @@
+import { useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   CAM_DISTANCE,
+  CAM_DOLLY_LAG,
   CAM_FOLLOW_LAG,
   CAM_HEIGHT,
   CAM_LOOK_HEIGHT,
+  CAM_LOOK_LAG,
   CAM_MIN_GROUND_CLEARANCE,
   CAM_ORBIT_SENSITIVITY,
   CAM_PITCH_MAX,
   CAM_PITCH_MIN,
+  CAM_SPEED_DOLLY,
+  CAT_RUN_SPEED,
   CREATE_CAM_DISTANCE,
   CREATE_CAM_HEIGHT,
   CREATE_CAM_LOOK_HEIGHT,
@@ -32,6 +37,10 @@ const _look = new THREE.Vector3()
  */
 export function FollowCamera() {
   const camera = useThree((s) => s.camera)
+  // The aim point the camera is actually looking at, chasing the cat rather
+  // than nailed to her. Kept here so it survives a re-render.
+  const look = useRef(new THREE.Vector3()).current
+  const dolly = useRef(CAM_DISTANCE)
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05)
@@ -55,7 +64,18 @@ export function FollowCamera() {
       input.lookDY = 0
     }
 
-    const dist = creating ? CREATE_CAM_DISTANCE : CAM_DISTANCE
+    // The camera eases back a little as she gets up to speed and closes again
+    // when she stops. Creation is exempt: that framing is composed against a
+    // fixed distance and a dolly would break it.
+    if (creating) {
+      dolly.current = CREATE_CAM_DISTANCE
+    } else {
+      const target =
+        CAM_DISTANCE + CAM_SPEED_DOLLY * clamp(live.cat.speed / CAT_RUN_SPEED, 0, 1)
+      dolly.current += (target - dolly.current) * (1 - Math.exp(-CAM_DOLLY_LAG * delta))
+    }
+
+    const dist = dolly.current
     const height = creating ? CREATE_CAM_HEIGHT : CAM_HEIGHT
     const lookHeight = creating ? CREATE_CAM_LOOK_HEIGHT : CAM_LOOK_HEIGHT
 
@@ -75,16 +95,26 @@ export function FollowCamera() {
     const floor = groundHeightAt(_target.x, _target.z) + clearance
     if (_target.y < floor) _target.y = floor
 
+    _look.set(p.x, p.y + lookHeight, p.z)
+
     if (live.camera.snap) {
       live.camera.snap = false
       camera.position.copy(_target)
+      look.copy(_look)
+      dolly.current = dist
     } else {
       const t = 1 - Math.exp(-CAM_FOLLOW_LAG * delta)
       camera.position.lerp(_target, t)
+      // The aim point lags too. The position already eased; the lookAt was
+      // exact, and an exact lookAt is what made a hard turn feel like the
+      // scenery was on a turntable. Creation snaps: the cat does not move
+      // there, so lag can only smear the composed framing.
+      if (creating) look.copy(_look)
+      else look.lerp(_look, 1 - Math.exp(-CAM_LOOK_LAG * delta))
     }
 
-    _look.set(p.x, p.y + lookHeight, p.z)
-    camera.lookAt(_look)
+    live.camera.dist = dist
+    camera.lookAt(look)
   })
 
   return null

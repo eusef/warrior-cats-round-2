@@ -37,6 +37,7 @@ import { treeColliders } from '../world/Foliage'
 import { debugHooks } from '../debug/expose'
 import { preyRegistry } from './preyRegistry'
 import { useCatAnimation } from './useCatAnimation'
+import { useCatJuice, type JuiceContext } from './useCatJuice'
 import { CAMP_LINES, CATCH_LINES, EAT_LINES, HUNGER_LINES } from '../content/lines'
 
 const MODEL_URL = '/models/Fox.glb'
@@ -45,6 +46,13 @@ useGLTF.preload(MODEL_URL)
 // Hoisted. Nothing is allocated inside useFrame.
 const _dir = new THREE.Vector2()
 const _desired = new THREE.Vector2()
+const _juice: JuiceContext = {
+  action: 'idle',
+  speed: 0,
+  crouched: false,
+  yawRate: 0,
+  hopHeight: 0,
+}
 
 /** The three GLB material slots character creation paints. */
 interface PeltSlots {
@@ -68,6 +76,10 @@ function paint(slots: PeltSlots, id: Identity) {
 
 export function PlayerCat() {
   const group = useRef<THREE.Group>(null)
+  // A plain Object3D wrapper the squash spring scales. Costs no draw call and
+  // no material; scaling here rather than on `group` keeps the pounce hop and
+  // the ground placement out of the squash maths.
+  const squash = useRef<THREE.Group>(null)
   const { scene, animations } = useGLTF(MODEL_URL)
   const identity = useGame((s) => s.identity)
 
@@ -105,6 +117,8 @@ export function PlayerCat() {
   }, [slots, identity])
 
   const animator = useCatAnimation(model, animations)
+  const juice = useCatJuice(model, squash)
+  const prevYaw = useRef(0)
   const saveTimer = useRef(0)
   const pounceResolved = useRef(false)
   // Seeded true, not false. The cat spawns standing in camp, so a false seed
@@ -307,11 +321,31 @@ export function PlayerCat() {
       g.rotation.y = cat.yaw + CAT_MODEL_YAW_OFFSET
     }
     animator.update(cat.action, cat.speed, delta)
+
+    // Strictly after the animator. The mixer rewrites every bone from the clip
+    // inside animator.update, so tail and ear offsets written before this line
+    // are erased in the same frame and the whole system looks like it is off.
+    _juice.action = cat.action
+    _juice.speed = cat.speed
+    _juice.crouched = cat.crouched
+    // Guard the divide. A frame with delta 0 -- which rAF hands you on the very
+    // first frame, and again whenever two frames share a timestamp -- makes this
+    // 0/0, and the resulting NaN is permanent: it flows into the tail's smoothed
+    // counter-swing, and every later frame smooths NaN toward NaN. That wrote
+    // NaN quaternions into all eight tail bones and deleted the tail and the
+    // rump on screen. `__game.step()` always passes a fixed 1/60, so no amount
+    // of stepped verification could ever reach this.
+    _juice.yawRate = delta > 0 ? shortestAngle(prevYaw.current, cat.yaw) / delta : 0
+    _juice.hopHeight = cat.hopHeight
+    prevYaw.current = cat.yaw
+    juice.update(_juice, delta)
   })
 
   return (
     <group ref={group}>
-      <primitive object={model} scale={CAT_SCALE} />
+      <group ref={squash}>
+        <primitive object={model} scale={CAT_SCALE} />
+      </group>
     </group>
   )
 }
