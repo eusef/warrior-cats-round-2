@@ -2,8 +2,12 @@ import {
   AUDIO_BIRD_GAIN,
   AUDIO_CATCH_GAIN,
   AUDIO_CEREMONY_GAIN,
+  AUDIO_CRICKET_FADE,
+  AUDIO_CRICKET_GAIN,
+  AUDIO_CRICKET_RATE,
   AUDIO_MASTER_GAIN,
   AUDIO_MEOW_GAIN,
+  AUDIO_OWL_GAIN,
   AUDIO_POUNCE_GAIN,
   AUDIO_PURR_FADE,
   AUDIO_PURR_GAIN,
@@ -39,8 +43,14 @@ let noise: AudioBuffer | null = null
 /** The resting purr, kept alive between rests so it can fade rather than click. */
 let purr: { gain: GainNode; sources: Array<AudioScheduledSourceNode> } | null = null
 let purring = false
+/** The night bed. Same shape as the purr: a voice that is started and stopped. */
+let crickets: { gain: GainNode; sources: Array<AudioScheduledSourceNode> } | null = null
+let cricketing = false
 let visibilityHooked = false
 let retryHooked = false
+
+/** The cricket gate's shape. Depends on nothing, so it is built once at import. */
+const chirpCurve = makeChirpCurve()
 
 /**
  * Counts every voice ever fired. Verification asserts on these rather than on
@@ -54,8 +64,11 @@ export const audioCounts = {
   ceremony: 0,
   tick: 0,
   bird: 0,
+  owl: 0,
   purrStart: 0,
   purrStop: 0,
+  /** Counts starts only. Balance is `cricket` against `isCricketing()`. */
+  cricket: 0,
 }
 
 export function unlockAudio() {
@@ -143,7 +156,8 @@ export function audioDiagnostics() {
     audioCounts.catch +
     audioCounts.ceremony +
     audioCounts.tick +
-    audioCounts.bird
+    audioCounts.bird +
+    audioCounts.owl
   return {
     state: ctx ? ctx.state : 'none',
     rate: ctx ? Math.round(ctx.sampleRate / 1000) : 0,
@@ -151,7 +165,10 @@ export function audioDiagnostics() {
     meow: audioCounts.meow,
     step: audioCounts.step,
     bird: audioCounts.bird,
+    owl: audioCounts.owl,
     purring,
+    // The two beds report the same way, so "is the night audible" is one glance.
+    cricketing,
     level: audioLevel(),
   }
 }
@@ -454,6 +471,89 @@ export function playChirp() {
   audioCounts.bird++
 }
 
+/**
+ * Crickets: what the birds hand over to. A narrow band of noise up at insect
+ * pitch, gated by an LFO so it chirps instead of hissing.
+ *
+ * Sustained, so it is built the way the purr is built rather than the way a
+ * one-shot is: a fresh graph per start, held until the stop fades it out. Two
+ * layers, because one gate alone is a metronome and this bed runs for a whole
+ * night at a time.
+ *
+ * It is meant to be barely noticed. AUDIO_CRICKET_GAIN is 0.05 against the
+ * meow's 0.34 on purpose: this is the floor under everything else, not a sound
+ * she should ever turn her head at.
+ */
+export function startCrickets() {
+  if (!ctx || !master || !noise || cricketing) return
+  cricketing = true
+  const t = ctx.currentTime
+
+  const out = ctx.createGain()
+  // Starts from silence, explicitly, and not from `out.gain.value` the way the
+  // purr does. A fresh GainNode defaults to 1, so ramping from its current value
+  // opens the bed at full scale, twenty times AUDIO_CRICKET_GAIN, and slides
+  // down across the whole fade instead of fading in.
+  out.gain.setValueAtTime(0.0001, t)
+  out.gain.linearRampToValueAtTime(AUDIO_CRICKET_GAIN, t + AUDIO_CRICKET_FADE)
+  out.connect(master)
+
+  const sources = [
+    ...chirpLayer(ctx, noise, 4500, AUDIO_CRICKET_RATE, 1, out, t),
+    // Higher, quieter, slower. The ratio is the golden-ratio conjugate, which is
+    // the standard trick for two periodic things that must never line back up:
+    // any tidier fraction gives the bed an audible loop a second or two long,
+    // and this thing plays for a whole night at a time.
+    ...chirpLayer(ctx, noise, 5400, AUDIO_CRICKET_RATE * 0.618, 0.6, out, t),
+  ]
+
+  crickets = { gain: out, sources }
+  audioCounts.cricket++
+}
+
+export function stopCrickets() {
+  if (!ctx || !crickets || !cricketing) return
+  cricketing = false
+  const t = ctx.currentTime
+  const { gain, sources } = crickets
+  crickets = null
+  gain.gain.cancelScheduledValues(t)
+  gain.gain.setValueAtTime(gain.gain.value, t)
+  gain.gain.linearRampToValueAtTime(0.0001, t + AUDIO_CRICKET_FADE)
+  // Stop after the fade, never on the same tick, or the tail clicks.
+  for (const s of sources) s.stop(t + AUDIO_CRICKET_FADE + 0.05)
+}
+
+export function isCricketing() {
+  return cricketing
+}
+
+/**
+ * An owl, somewhere out in the trees. Two hoots, the second lower and shorter,
+ * panned off to one side like the birds so the forest keeps its width at night.
+ *
+ * Friendly and far away by construction: soft attack, long release, no dissonant
+ * interval and no growl. It is a bird saying hello in the dark, which is the
+ * only kind of night sound this game is allowed to make.
+ */
+export function playOwl() {
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+
+  let dest: AudioNode = master
+  if (ctx.createStereoPanner) {
+    const pan = ctx.createStereoPanner()
+    pan.pan.value = Math.random() * 1.4 - 0.7
+    pan.connect(master)
+    dest = pan
+  }
+
+  const f = 340 + Math.random() * 60
+  hoot(f, t, 0.55, AUDIO_OWL_GAIN, dest)
+  hoot(f * 0.86, t + 0.68, 0.42, AUDIO_OWL_GAIN * 0.75, dest)
+  audioCounts.owl++
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -470,6 +570,129 @@ function blip(freq: number, at: number, dur: number, gain: number, type: Oscilla
   osc.connect(env).connect(master)
   osc.start(at)
   osc.stop(at + dur + 0.02)
+}
+
+/**
+ * One hoot. A sine with a slight downward bend, a quiet octave above it for
+ * body, and a breath of filtered noise: a bare sine at this pitch is a test
+ * tone, and the noise is the whole difference between a tone and a bird.
+ */
+function hoot(freq: number, at: number, dur: number, gain: number, dest: AudioNode) {
+  if (!ctx || !noise) return
+
+  const osc = ctx.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(freq, at)
+  osc.frequency.linearRampToValueAtTime(freq * 0.94, at + dur)
+
+  const oct = ctx.createOscillator()
+  oct.type = 'sine'
+  oct.frequency.setValueAtTime(freq * 2, at)
+  oct.frequency.linearRampToValueAtTime(freq * 1.88, at + dur)
+  const octGain = ctx.createGain()
+  octGain.gain.value = 0.12
+
+  const air = ctx.createBufferSource()
+  air.buffer = noise
+  air.playbackRate.value = 0.7 + Math.random() * 0.3
+  const airBp = ctx.createBiquadFilter()
+  airBp.type = 'bandpass'
+  airBp.frequency.value = freq * 2.6
+  airBp.Q.value = 2.5
+  const airGain = ctx.createGain()
+  airGain.gain.value = 0.16
+
+  // Attack over the first third and then all the way out. A hard attack down
+  // here reads as a foghorn, and this has to sit behind everything else.
+  const env = ctx.createGain()
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.linearRampToValueAtTime(Math.max(0.0002, gain), at + dur * 0.3)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+
+  osc.connect(env)
+  oct.connect(octGain).connect(env)
+  air.connect(airBp).connect(airGain).connect(env)
+  env.connect(dest)
+
+  osc.start(at)
+  oct.start(at)
+  air.start(at)
+  osc.stop(at + dur + 0.03)
+  oct.stop(at + dur + 0.03)
+  air.stop(at + dur + 0.03)
+}
+
+/**
+ * One layer of crickets: narrow-band noise through a gate the LFO opens.
+ *
+ * The gate is a WaveShaper and not a bare LFO on the gain, which is the obvious
+ * thing to reach for and does not work. A GainNode's gain does not clamp at
+ * zero, so a big LFO into it inverts the signal on the negative half rather
+ * than clipping toward a square: no gaps between chirps, and as many times too
+ * loud as the multiplier. The curve does the clamping instead. It shuts fully
+ * between chirps and leaves at zero slope, so the edges cannot click.
+ */
+function chirpLayer(
+  c: AudioContext,
+  buf: AudioBuffer,
+  band: number,
+  rate: number,
+  level: number,
+  dest: AudioNode,
+  at: number,
+) {
+  const src = c.createBufferSource()
+  src.buffer = buf
+  src.loop = true
+  // Jittered the way the paws are, so two layers reading the same two-second
+  // buffer do not share a loop point and beat against each other.
+  src.playbackRate.value = 0.8 + Math.random() * 0.4
+
+  // Very high Q on purpose. A cricket is nearly a tone; anything wide is hiss.
+  const bp = c.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.value = band
+  bp.Q.value = 18
+
+  const gate = c.createGain()
+  gate.gain.value = 0
+
+  const lfo = c.createOscillator()
+  lfo.type = 'sine'
+  lfo.frequency.value = rate
+  const shaper = c.createWaveShaper()
+  shaper.curve = chirpCurve
+  lfo.connect(shaper).connect(gate.gain)
+
+  // Makeup gain. A Q of 18 passes about 400Hz of a 24kHz-wide noise buffer, so
+  // what comes out of the filter is around 0.07 RMS where every other voice here
+  // hands the mix something near unit scale. Without this, AUDIO_CRICKET_GAIN
+  // would not be on the same scale as AUDIO_PURR_GAIN and the bed would land 20x
+  // below where its number says it should sit.
+  const out = c.createGain()
+  out.gain.value = level * 6
+
+  src.connect(bp).connect(gate).connect(out).connect(dest)
+  src.start(at)
+  lfo.start(at)
+  return [src, lfo]
+}
+
+/**
+ * The cricket gate, as a lookup on the LFO's amplitude. Flat zero below the
+ * threshold, so the gate is shut for roughly two thirds of every cycle, and a
+ * curved rise above it, so each chirp has an attack rather than an edge. The
+ * exponent above 1 is what puts the zero slope at the closing point.
+ */
+function makeChirpCurve() {
+  const n = 257
+  const curve = new Float32Array(new ArrayBuffer(n * 4))
+  const thresh = 0.55
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    curve[i] = x <= thresh ? 0 : Math.pow((x - thresh) / (1 - thresh), 1.5)
+  }
+  return curve
 }
 
 function makeProbe(n: number) {

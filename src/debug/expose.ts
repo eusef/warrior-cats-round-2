@@ -3,21 +3,26 @@ import {
   audioCounts,
   audioLevel,
   audioState,
+  isCricketing,
   isPurring,
   playCatch,
   playCeremony,
   playChirp,
   playMeow,
+  playOwl,
   playPounce,
   playStep,
   playTick,
+  startCrickets,
   startPurr,
+  stopCrickets,
   stopPurr,
   unlockAudio,
 } from '../audio/engine'
 import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
-import { HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
+import { DAY_LENGTH_SEC, HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
+import { clockString, phaseName, wrapTime } from '../world/daylight'
 import { input, setActionHeld } from '../input/useTouchInput'
 
 /** ?debug=1 turns on the overlay and the window bridge. Off by default. */
@@ -75,6 +80,15 @@ export interface GameBridge {
   endCeremony: () => void
   ceremony: () => Record<string, unknown> | null
   /**
+   * Scrubs the clock to a 0..1 fraction, 0 = midnight. One full cycle is
+   * DAY_LENGTH_SEC real seconds, so without this every sky assertion means
+   * sitting through three minutes of wall clock per pass. Values outside the
+   * range wrap rather than throw, so `setTime(-0.1)` is late evening.
+   */
+  setTime: (t: number) => void
+  /** The clock as both the raw fraction and something readable. */
+  time: () => Record<string, unknown>
+  /**
    * Sound is the one system a screenshot cannot check. `counts` proves the
    * right cue fired, `level` proves it actually reached the master bus.
    */
@@ -83,6 +97,7 @@ export interface GameBridge {
     level: () => number
     counts: () => Record<string, number>
     purring: () => boolean
+    cricketing: () => boolean
     unlock: () => void
     play: (name: string) => void
   }
@@ -139,6 +154,10 @@ export function installBridge() {
         },
         speed: round2(live.cat.speed),
         resting: live.resting,
+        time: clockString(live.timeOfDay),
+        todPhase: phaseName(live.timeOfDay),
+        sunElev: round2(live.sunElev),
+        night: round2(live.night),
       }
       // eslint-disable-next-line no-console
       console.log('[stats]', JSON.stringify(s, null, 2))
@@ -189,11 +208,28 @@ export function installBridge() {
       return c ? { ...c } : null
     },
 
+    setTime: (t: number) => {
+      live.timeOfDay = wrapTime(t)
+    },
+    time: () => ({
+      // Four places, not round2: a day is one unit wide, so two places quantise
+      // the clock to 14 game-minutes and a setTime round-trip assert fails.
+      t: round4(live.timeOfDay),
+      clock: clockString(live.timeOfDay),
+      phase: phaseName(live.timeOfDay),
+      // Written by Lighting, so these are last frame's until the loop has run
+      // once after a scrub. `__game.step(1)` settles them.
+      sunElev: round2(live.sunElev),
+      night: round2(live.night),
+      lengthSec: DAY_LENGTH_SEC,
+    }),
+
     audio: {
       state: () => audioState(),
       level: () => audioLevel(),
       counts: () => ({ ...audioCounts }),
       purring: () => isPurring(),
+      cricketing: () => isCricketing(),
       unlock: () => unlockAudio(),
       play: (name: string) => {
         const voices: Record<string, () => void> = {
@@ -207,6 +243,9 @@ export function installBridge() {
           chirp: playChirp,
           purrOn: startPurr,
           purrOff: stopPurr,
+          cricketOn: startCrickets,
+          cricketOff: stopCrickets,
+          owl: playOwl,
         }
         voices[name]?.()
       },
@@ -245,6 +284,10 @@ export function attachStepToBridge(step: (count: number, dt: number) => number) 
 
 function round2(v: number) {
   return Math.round(v * 100) / 100
+}
+
+function round4(v: number) {
+  return Math.round(v * 10000) / 10000
 }
 
 function clamp(v: number, lo: number, hi: number) {

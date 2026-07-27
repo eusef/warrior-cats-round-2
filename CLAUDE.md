@@ -101,13 +101,20 @@ public/models/         # .glb only
 | Draw calls | 100 |
 | Triangles | 150k |
 | Texture size | 1024x1024 |
-| Unique materials | 16 |
+| Unique materials | 17 |
 
 Raised from 15 to 16 for the camp beacon, which draws its shaft twice: once
 depth-tested and once with depth testing off so it stays visible through the
 trees. Measured at the same time: 21 draw calls and 46k triangles, both far
 inside budget. Material count is a proxy for shader-program switches, not a hard
 GPU limit, so the two-pass beam was worth the one extra slot.
+
+Raised again from 16 to 17 for the fireflies, which are one instanced mesh with
+one additive material. Counted in Chrome at 1180x820: **17 unique materials, 13
+draw calls and 43.5k triangles by day, 14 and 49.1k at night.** The swarm is the
+entire difference: by day it sets `visible = false` and returns before its
+transform loop, so it costs one comparison and no draw call for roughly two
+thirds of the cycle.
 
 ## Assets
 
@@ -205,7 +212,7 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 2. ~~**Character creation.**~~ **DONE** — a `'create'` phase between the title tap and play, `src/ui/CreateCat.tsx`. Six pelts, four eye colors, twelve name prefixes, all tap targets, no text entry. The sheet covers the bottom 300px and the cat standing above it is the **real model on the existing canvas**, slow-orbiting, repainted on every tap: `color.set` on materials that were already cloned, so the whole screen costs zero draw calls. Four things worth knowing before touching it. **The save stores indices into `PELTS` / `EYE_COLORS` / `NAME_PREFIXES`, never hex or strings**, so retuning a color updates the cat she already made — but never reorder those lists or you repaint her cat. **Save is v2; a v1 blob still loads** with all its progress and simply arrives without an identity, which is the single rule that routes her into creation exactly once. **The creation camera is its own framing block in `FollowCamera`** (`CREATE_CAM_*`), including a reduced ground clearance, because the play-mode 0.7m floor shoved the camera up and undid the composition. And `wasResting` in `PlayerCat` is seeded `true` on purpose: the cat spawns inside camp, so a `false` seed fired "Resting at camp." on frame one and instantly overwrote the "You are &lt;Name&gt;." beat. Verified in Chrome at a true 1180x820 with dpr 2: every pelt and eye color asserted by reading `material.color` off the cat rather than from pixels, all twelve names, save round-trip, v1 migration with 7 hunts intact, 17 draw calls, 44k triangles, zero console errors. **The iPad framerate is not separately measured** — the screen adds no geometry and no draw calls over normal play, so there was nothing new to measure, but that reasoning is not a device reading. Marked done by Phil.
 
    This also fixed a bug that predates it: `font: '700 44px/1 inherit'` is an **invalid CSS shorthand** (`inherit` is not a legal family inside it), so the browser dropped the whole declaration and the title, the toast and the action button had all been rendering at 16px/400 since v1. A `<button>` also needs an explicit `fontFamily: 'inherit'`. Use separate `fontSize` / `fontWeight` / `lineHeight` properties, never the shorthand, unless you are naming a real family list the way `DebugOverlay` does.
-3. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
+3. **~~Warrior name ceremony~~. DONE** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
 4. ~~**Sound.**~~ **DONE** — confirmed audible on the iPad and the mix approved
    by ear, unchanged from the tuned defaults. Every sound is
    synthesised in `src/audio/engine.ts`. There are no audio files: nothing to
@@ -256,12 +263,75 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
    the entire cause of an iPhone that would not make a sound with the ringer on
    and the volume up, and it cost a debugging round before the code was even
    suspect. The `?debug=1` audio readout exists to make that a ten-second check.
-5. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
-6. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
+5. **~~Juice pass~~. DONE.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
+6. ~~**Day and night.**~~ **BUILT, needs the iPad check.** A full cycle is
+   `DAY_LENGTH_SEC = 180` real seconds. Time of day is one number in `live.timeOfDay`
+   (0..1, 0 = midnight), advanced by `Lighting.tsx` and nowhere else, and persisted
+   as save **v4** (`tod`); a v3 blob loads at `DAY_START_T`, mid-morning. The clock
+   only runs while `phase === 'playing'`, so the title and creation screens hold
+   still. `src/world/daylight.ts` is the whole model as pure functions with no R3F
+   import, which is what lets `__game.setTime(t)` scrub the cycle and assert it
+   without waiting three minutes.
+
+   **Five things that will bite whoever touches this next.**
+
+   **The `t` values in `SKY_KEYS` are not free.** The sun crosses the horizon at
+   t = 0.176 and 0.824, symmetric about noon, so the morning rows must mirror the
+   evening rows. Spacing them by eye put the whole morning ramp 0.1 of a cycle
+   late and rendered night fog and fireflies with **the sun 20 degrees above the
+   horizon**. If you change `SUN_ELEV_MID` or `SUN_ELEV_AMP`, recompute the
+   crossings and re-space; do not guess.
+
+   **The palette hexes are sRGB but three lights in linear, and the grass is
+   dark.** Night colours that look like a reasonable dark blue in a picker render
+   pure black: `#2a3b5c` at intensity 0.35 put the ground at 0.004 linear, which
+   tone-maps to 14/255, and the whole world was an unreadable black rectangle
+   that `castShadow = false` did not change. The night rows are now set by
+   measuring a ground pixel, landing at 41/255 green against noon's 105. **Judge
+   a night row by reading a pixel, never by how the swatch looks.**
+
+   **The shadow-casting light never drops below `LIGHT_MIN_ELEVATION` (8 deg).**
+   It follows the sun's arc but pins its height at night, so the horizontal sweep
+   continues and it reads as a moon. Flipping to the sun's antipode at the
+   horizon crossing is the obvious alternative and it snaps every shadow in the
+   scene through 180 degrees in a single frame.
+
+   **Fireflies respawn *ahead* of her, not at a uniform rim angle.** At a 7 m/s
+   run she crosses the 14m disc in two seconds against a 0.35 m/s drift, so a
+   uniform angle strands the swarm behind her and the meadow goes dark exactly
+   while she is exploring. Measured after the fix: 40 of 70 lit while running,
+   37 standing still. They are additive on purpose (they only ever exist against
+   a dark sky) which is the opposite call from the camp beacon, for the opposite
+   reason. Do not "fix" one to match the other.
+
+   **The camp beacon is `meshBasic` + `fog: false` + `toneMapped: false`,** so
+   nothing in the scene dims it and at midnight it was a neon pillar. It now
+   scales by `CAMP_BEACON_NIGHT_MULT`, folded into the single `useFrame` that
+   already owns its opacity. Measured 0.4991 at noon, 0.225 at night.
+
+   Audio: birds thin out as the sun drops and stop below `AUDIO_BIRD_MIN_SUN`,
+   crickets fade in as a bed, and a rare owl hoots deep in the night. All three
+   are cued from `AudioDriver`, which is still the only thing that decides when a
+   sound plays. Counted under `__game.step()`: day 5 birds / 0 owls / no crickets
+   in 30s; dusk-to-night 1 bird / 1 owl / crickets on; a full 180s cycle gives 14
+   birds, 2 owls, 2 balanced cricket start/stop pairs.
+
+   Verified in Chrome at a true 1180x820: full-cycle sweep with zero
+   sun-versus-palette violations, save v4 round-trip plus v3/v2/v1 migration and
+   a v9 blob correctly rejected, 17 materials, 13/14 draw calls, 43.5k/49.1k
+   triangles, zero console errors. **Not verified: the iPad.** Framerate is the
+   real question, because night adds 70 additive transparent motes on top of the
+   beacon's existing overdraw at dpr 2, and that is exactly the thing desktop
+   Chrome cannot measure. **Also unverified by ear: the cricket bed and the owl**,
+   which are new voices and have never been through a device mix check.
+   `DAY_LENGTH_SEC` at 180 is deliberately fast; `__game.setTime()` makes it a
+   ten-second job to try 8 minutes instead.
 7. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
 8. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
 9. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
 10. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
+11. **Multiplayer mode**. Where the players can see each other on the map and chase prey.
+12. **Cat Models**. Need to update the models to look like cats.
 
 ## Commands
 

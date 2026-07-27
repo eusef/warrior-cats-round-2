@@ -8,6 +8,7 @@ import {
   CAMP_BEACON_FADE_NEAR,
   CAMP_BEACON_GHOST_OPACITY,
   CAMP_BEACON_HEIGHT,
+  CAMP_BEACON_NIGHT_MULT,
   CAMP_BEACON_OPACITY,
   CAMP_BEACON_RADIUS_BOTTOM,
   CAMP_BEACON_RADIUS_TOP,
@@ -94,7 +95,13 @@ export function CampBeacon() {
     // invisible under an exponential lerp and matches how the rest ring already
     // reads live.resting.
     const d = distToCamp(live.cat.pos.x, live.cat.pos.z)
-    const target = smoothstep(CAMP_BEACON_FADE_NEAR, CAMP_BEACON_FADE_FAR, d) * CAMP_BEACON_OPACITY
+    // Folded into the one place opacity is computed rather than written after,
+    // because this useFrame is the sole owner of it and a second write would be
+    // clobbered. meshBasic + fog:false + toneMapped:false means nothing else in
+    // the scene dims this thing, so at midnight it would be a neon pillar.
+    const nightFade = 1 + (CAMP_BEACON_NIGHT_MULT - 1) * live.night
+    const target =
+      smoothstep(CAMP_BEACON_FADE_NEAR, CAMP_BEACON_FADE_FAR, d) * CAMP_BEACON_OPACITY * nightFade
     mat.opacity += (target - mat.opacity) * (1 - Math.exp(-CAMP_BEACON_FADE_LERP * delta))
     ghost.opacity = mat.opacity * CAMP_BEACON_GHOST_OPACITY
 

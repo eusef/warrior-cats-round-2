@@ -1,5 +1,12 @@
 import * as THREE from 'three'
-import { CAM_DISTANCE, CAT_SPAWN, CAT_START_HEALTH, CAT_START_HUNGER, NEED_MAX } from './constants'
+import {
+  CAM_DISTANCE,
+  CAT_SPAWN,
+  CAT_START_HEALTH,
+  CAT_START_HUNGER,
+  DAY_START_T,
+  NEED_MAX,
+} from './constants'
 import { groundHeightAt } from './terrain'
 
 export type CatAction = 'idle' | 'walk' | 'run' | 'crouch' | 'pounce' | 'eat' | 'rest'
@@ -49,6 +56,15 @@ export const live = {
   /** True while the cat is inside the camp radius and not moving. */
   resting: false,
 
+  // Time of day, 0..1, 0 = midnight. Advanced by Lighting, which is the first
+  // useFrame subscriber inside <Suspense>, so everything downstream reads this
+  // frame's value rather than last frame's.
+  timeOfDay: DAY_START_T,
+  /** 0 = full day, 1 = deep night. Sampled from SKY_KEYS by Lighting. */
+  night: 0,
+  /** Sun elevation in degrees. Negative is below the horizon. */
+  sunElev: 0,
+
   /** Live counters for the debug overlay. */
   stats: {
     fps: 0,
@@ -76,6 +92,11 @@ export function resetLive(health = CAT_START_HEALTH, hunger = CAT_START_HUNGER) 
   live.camera.snap = true
   live.camera.dist = CAM_DISTANCE
   live.resting = false
+  // A fresh cat always starts in mid-morning light. load() overwrites this from
+  // the save when the blob carries a time; a v3 blob does not, and lands here.
+  live.timeOfDay = DAY_START_T
+  live.night = 0
+  live.sunElev = 0
 }
 
 function clamp01to(v: number) {

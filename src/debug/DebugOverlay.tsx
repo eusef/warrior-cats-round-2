@@ -3,6 +3,7 @@ import { advance, useFrame, useThree } from '@react-three/fiber'
 import { HUNTS_TO_WARRIOR } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
+import { clockString, phaseName } from '../world/daylight'
 import { attachSceneToBridge, attachStepToBridge, DEBUG } from './expose'
 import { audioDiagnostics } from '../audio/engine'
 
@@ -80,6 +81,11 @@ export function DebugOverlay() {
         `pos      ${c.pos.x.toFixed(1)} ${c.pos.y.toFixed(1)} ${c.pos.z.toFixed(1)}\n` +
         `speed    ${c.speed.toFixed(2)}\n` +
         `action   ${c.action}${live.resting ? ' (rest)' : ''}\n` +
+        // The phase name is padded to the longest one ("first light") so the sun
+        // and night columns hold still instead of sliding sideways every time
+        // the phase ticks over.
+        `time     ${clockString(live.timeOfDay)} ${phaseName(live.timeOfDay).padEnd(11)}` +
+        `  sun ${live.sunElev.toFixed(0).padStart(3)}  night ${live.night.toFixed(2)}\n` +
         `hunts    ${g.huntCount}/${HUNTS_TO_WARRIOR}${g.identity.warrior ? ' warrior' : ''}` +
         `   seed ${g.seed}\n` +
         // Three numbers that tell the three iOS failure modes apart. state

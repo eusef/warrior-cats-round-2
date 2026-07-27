@@ -1,9 +1,15 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
+  AUDIO_BIRD_DUSK_MULT,
   AUDIO_BIRD_FIRST_GAP,
   AUDIO_BIRD_MAX_GAP,
   AUDIO_BIRD_MIN_GAP,
+  AUDIO_BIRD_MIN_SUN,
+  AUDIO_CRICKET_NIGHT_THRESHOLD,
+  AUDIO_OWL_MAX_GAP,
+  AUDIO_OWL_MIN_GAP,
+  AUDIO_OWL_NIGHT_THRESHOLD,
   AUDIO_STEP_CADENCE_RUN,
   AUDIO_STEP_CADENCE_WALK,
   AUDIO_STEP_CROUCH_MULT,
@@ -11,20 +17,25 @@ import {
   CAT_RUN_SPEED,
   CAT_WALK_SPEED,
   HUNGER_LOW_THRESHOLD,
+  SUN_ELEV_MID,
 } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import {
   audioReady,
+  isCricketing,
   isPurring,
   playCatch,
   playCeremony,
   playChirp,
   playMeow,
+  playOwl,
   playPounce,
   playStep,
   playTick,
+  startCrickets,
   startPurr,
+  stopCrickets,
   stopPurr,
 } from './engine'
 
@@ -60,6 +71,7 @@ export function AudioDriver() {
     /** 0..1 through the current stride. Crossing 1 places a paw. */
     stepPhase: 0.85,
     birdT: AUDIO_BIRD_FIRST_GAP,
+    owlT: AUDIO_OWL_MIN_GAP,
   })
 
   useFrame((_, rawDelta) => {
@@ -137,12 +149,45 @@ export function AudioDriver() {
     // --- birdsong -----------------------------------------------------------
     // Ticked on delta rather than the audio clock so it also advances under
     // __game.step(), which is what makes it verifiable without waiting.
-    if (playing || g.phase === 'create') {
+    //
+    // Below AUDIO_BIRD_MIN_SUN the timer is held rather than ticked. Ticking it
+    // through the night would leave it tens of seconds negative and dump every
+    // bird it owed onto the first frame of dawn.
+    if ((playing || g.phase === 'create') && live.sunElev >= AUDIO_BIRD_MIN_SUN) {
       t.birdT -= delta
       if (t.birdT <= 0) {
         playChirp()
-        t.birdT = AUDIO_BIRD_MIN_GAP + Math.random() * (AUDIO_BIRD_MAX_GAP - AUDIO_BIRD_MIN_GAP)
+        // Drawn first and stretched second, so dusk still has varied gaps
+        // rather than converging on one long constant one.
+        const gap = AUDIO_BIRD_MIN_GAP + Math.random() * (AUDIO_BIRD_MAX_GAP - AUDIO_BIRD_MIN_GAP)
+        t.birdT = gap * duskStretch(live.sunElev)
       }
+    }
+
+    // --- crickets -----------------------------------------------------------
+    // The night bed, edge-driven off live.night exactly the way the purr is
+    // driven off live.resting. isCricketing() is the tracker, so starts and
+    // stops stay balanced and a frame spent sitting on the threshold cannot
+    // restart it. `playing` in the want is what stops it when she leaves play.
+    const wantCrickets = playing && live.night > AUDIO_CRICKET_NIGHT_THRESHOLD
+    if (wantCrickets && !isCricketing()) startCrickets()
+    else if (!wantCrickets && isCricketing()) stopCrickets()
+
+    // --- owl ----------------------------------------------------------------
+    // Rare, and deeper into the night than the crickets. Outside that window the
+    // timer is re-seeded rather than held: it cannot bank a hoot for dawn, and
+    // every nightfall gets the same quiet lead-in the first one got instead of
+    // hooting on the frame the threshold is crossed. Seeding it to a constant
+    // rather than a fresh draw also makes the first hoot assertable under
+    // __game.step(): nothing before AUDIO_OWL_MIN_GAP of deep night, one at it.
+    if (playing && live.night > AUDIO_OWL_NIGHT_THRESHOLD) {
+      t.owlT -= delta
+      if (t.owlT <= 0) {
+        playOwl()
+        t.owlT = AUDIO_OWL_MIN_GAP + Math.random() * (AUDIO_OWL_MAX_GAP - AUDIO_OWL_MIN_GAP)
+      }
+    } else {
+      t.owlT = AUDIO_OWL_MIN_GAP
     }
 
     sync(t, g)
@@ -171,6 +216,23 @@ function sync(t: Tracked, g: ReturnType<typeof useGame.getState>) {
   t.pelt = g.identity.pelt
   t.eyes = g.identity.eyes
   t.prefix = g.identity.prefix
+}
+
+/**
+ * How much to stretch the gap to the next bird: 1 while the sun is high, rising
+ * to AUDIO_BIRD_DUSK_MULT at the cutoff, so evening thins out instead of a full
+ * chorus stopping dead on one frame.
+ *
+ * Anchored at SUN_ELEV_MID, the sun's mean elevation, because it is a real
+ * number in the clock rather than an invented one. That puts the whole ramp in
+ * the last stretch before the cutoff, about twelve seconds of real time at
+ * DAY_LENGTH_SEC, so expect one stretched gap and then silence. It applies in
+ * reverse at dawn, which is free and correct: birds come back gradually.
+ */
+function duskStretch(elev: number) {
+  const band = SUN_ELEV_MID - AUDIO_BIRD_MIN_SUN
+  const k = Math.min(1, Math.max(0, (SUN_ELEV_MID - elev) / band))
+  return 1 + (AUDIO_BIRD_DUSK_MULT - 1) * k
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   DEFAULT_PELT,
   DEFAULT_PREFIX,
   CREATE_CAM_START_YAW,
+  DAY_START_T,
   EYE_COLORS,
   HUNTS_TO_WARRIOR,
   NEED_MAX,
@@ -22,6 +23,9 @@ import { live, resetLive } from './live'
 import { resetNeedEdges } from './needs'
 import { DEFAULT_SEED } from './rng'
 import { groundHeightAt } from './terrain'
+// daylight.ts reads live and constants and never imports the store, so this
+// direction is the only one that exists and there is no cycle.
+import { wrapTime } from '../world/daylight'
 
 export type Phase = 'title' | 'create' | 'playing'
 
@@ -82,7 +86,7 @@ export function catName(id: Identity): string {
 }
 
 interface SaveBlob {
-  v: 1 | 2 | 3
+  v: 1 | 2 | 3 | 4
   health: number
   hunger: number
   huntCount: number
@@ -97,6 +101,10 @@ interface SaveBlob {
   // v3 only. Absent means apprentice, so a v2 cat loads with every hunt intact
   // and simply has the ceremony still ahead of her.
   warrior?: boolean
+  // v4 only. Absent means the save predates the day/night cycle, so it lands on
+  // DAY_START_T and she wakes in the same mid-morning light a new cat gets,
+  // rather than at whatever midnight a missing number would default to.
+  tod?: number
 }
 
 interface GameState {
@@ -232,13 +240,16 @@ export const useGame = create<GameState>((set, get) => ({
   save: () => {
     const id = get().identity
     const blob: SaveBlob = {
-      v: 3,
+      v: 4,
       health: live.health,
       hunger: live.hunger,
       huntCount: get().huntCount,
       x: live.cat.pos.x,
       z: live.cat.pos.z,
       yaw: live.cat.yaw,
+      // From live, like the position and the needs above: Lighting advances the
+      // clock every frame and never pushes it through the store.
+      tod: live.timeOfDay,
       // Written only once she has actually chosen, so a save made before the
       // Begin tap still routes her back into creation next time.
       ...(get().identityChosen
@@ -268,7 +279,7 @@ export const useGame = create<GameState>((set, get) => ({
     }
     // Widen this every time the version goes up. A version this does not name
     // is discarded, which silently throws away her whole game.
-    if (!blob || (blob.v !== 1 && blob.v !== 2 && blob.v !== 3)) return false
+    if (!blob || (blob.v !== 1 && blob.v !== 2 && blob.v !== 3 && blob.v !== 4)) return false
 
     // A v1 blob (the build she has already played) keeps every bit of its
     // progress and simply arrives without a cat, which sends her through
@@ -295,6 +306,9 @@ export const useGame = create<GameState>((set, get) => ({
     )
     live.cat.yaw = numOr(blob.yaw, 0)
     live.cat.vel.set(0, 0, 0)
+    // Wrapped rather than trusted: a hand-edited or drifted blob outside [0, 1)
+    // would otherwise put the sun somewhere the palette never keys.
+    live.timeOfDay = wrapTime(numOr(blob.tod, DAY_START_T))
     set({ huntCount: Math.max(0, Math.floor(numOr(blob.huntCount, 0))) })
     return true
   },

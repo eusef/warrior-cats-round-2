@@ -6,6 +6,7 @@ import { useGame } from './game/store'
 import { Terrain, WorldSkirt } from './world/Terrain'
 import { Foliage } from './world/Foliage'
 import { Camp } from './world/Camp'
+import { Fireflies } from './world/Fireflies'
 import { Lighting } from './world/Lighting'
 import { PlayerCat } from './actors/PlayerCat'
 import { Prey } from './actors/Prey'
@@ -38,6 +39,7 @@ export function App() {
           <WorldSkirt />
           <Foliage />
           <Camp />
+          <Fireflies />
           {/* PlayerCat must mount before Prey: R3F runs useFrame in subscription
               order, and the mice read live.cat.crouched the same frame it is set.
               Reversed, stalking was always one frame stale and spooked them. */}

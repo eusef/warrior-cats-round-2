@@ -332,3 +332,162 @@ export const AUDIO_BIRD_GAIN = 0.14
 export const AUDIO_BIRD_MIN_GAP = 4
 export const AUDIO_BIRD_MAX_GAP = 11
 export const AUDIO_BIRD_FIRST_GAP = 1.5 // seconds before the first bird after audio starts
+
+// Night voices. Crickets are a sustained bed that fades in with the night
+// factor; the owl is a rare one-shot. Both are silent by day.
+export const AUDIO_BIRD_MIN_SUN = 2 // degrees of sun elevation below which birds stop
+export const AUDIO_BIRD_DUSK_MULT = 3 // gaps stretch by up to this much as the sun drops
+export const AUDIO_CRICKET_GAIN = 0.05
+export const AUDIO_CRICKET_RATE = 4.2 // chirps per second
+export const AUDIO_CRICKET_FADE = 2.5 // seconds to fade the bed in and out
+export const AUDIO_CRICKET_NIGHT_THRESHOLD = 0.4 // night factor at which crickets start
+export const AUDIO_OWL_GAIN = 0.09
+export const AUDIO_OWL_MIN_GAP = 18 // seconds
+export const AUDIO_OWL_MAX_GAP = 40
+export const AUDIO_OWL_NIGHT_THRESHOLD = 0.6 // deeper into night than the crickets
+
+// ---------------------------------------------------------------------------
+// Day and night
+//
+// Time of day is a single number in [0, 1): 0 is midnight, 0.5 is noon. It
+// lives in live.ts, not the store, because it changes every frame.
+//
+// The sun rides a tilted circle, so DAY_LENGTH_SEC does not split evenly into
+// day and night. With the mid/amplitude below the sun is above the horizon for
+// about 65% of the cycle, which keeps night short without a non-uniform clock.
+// ---------------------------------------------------------------------------
+export const DAY_LENGTH_SEC = 180 // real seconds for one full cycle
+export const DAY_START_T = 0.36 // where a brand-new cat starts: mid-morning
+// Sun elevation in degrees = MID + AMP * sin(). Peak +58, lowest -22.
+export const SUN_ELEV_MID = 18
+export const SUN_ELEV_AMP = 40
+// Rotates the whole arc so noon lands where the old fixed sun was, which is
+// what the shadow direction across camp was composed against.
+export const SUN_AZIMUTH_OFFSET = -0.92 // radians
+export const SUN_DISTANCE = 42 // how far the light rig sits from the cat
+// The shadow-casting light never drops below this, so shadows never come from
+// underneath the world. Below the horizon the sun's direction keeps sweeping
+// but its height is pinned here, which reads as a moon and avoids the visible
+// shadow snap you get from flipping to the antipode at the horizon crossing.
+export const LIGHT_MIN_ELEVATION = 8 // degrees
+
+/** One entry in the sky palette. Everything the time of day drives. */
+export interface SkyKey {
+  /** Time of day, 0..1. Keys must be sorted; the list wraps back to the first. */
+  t: number
+  /** Directional (sun/moon) light. */
+  sun: string
+  sunIntensity: number
+  hemiSky: string
+  hemiGround: string
+  hemiIntensity: number
+  fog: string
+  fogNear: number
+  fogFar: number
+  /** Renderer tone-mapping exposure. A cheap global brightness lever. */
+  exposure: number
+  /** drei <Sky> shader uniforms. */
+  turbidity: number
+  rayleigh: number
+  mie: number
+  /** 0 = full day, 1 = deep night. Drives fireflies, crickets, owl, beacon. */
+  night: number
+}
+
+// The palette. This table IS the look of the game across the cycle; tune here
+// and nowhere else. The noon row is the old fixed v1 lighting verbatim, so
+// midday still looks exactly like the build she has already played.
+//
+// The `t` values are NOT free. With the sun arc above, the sun crosses the
+// horizon at t = 0.176 and again at t = 0.824, symmetric about noon, so the
+// morning rows must mirror the evening rows about t = 0.5 (0.10<->0.90,
+// 0.16<->0.84, 0.22<->0.78, 0.28<->0.72, 0.36<->0.64). Spacing them by eye
+// instead put the whole morning ramp about 0.1 of a cycle late, which rendered
+// deep-blue night fog and fireflies with the sun 20 degrees above the horizon.
+// Change SUN_ELEV_MID or SUN_ELEV_AMP and these crossings move: recompute
+// t = 0.25 +/- asin(-MID/AMP) / TAU and re-space, do not guess.
+//
+// Second trap, and it is the one that will fool you: these hex values are sRGB
+// but three lights in LINEAR space, and the grass albedo is dark. Picking night
+// colours that "look like a dark blue" in a colour picker renders pure black.
+// A hemisphere sky of #2a3b5c at intensity 0.35 puts the ground at 0.004 linear,
+// which tone-maps to 14/255. The night rows below are set so the ground lands
+// near 0.048 linear, about a quarter of noon, which is roughly 58/255 and is
+// actually readable. Judge a night row by measuring a ground pixel, never by
+// how the swatch looks.
+export const SKY_KEYS: SkyKey[] = [
+  // midnight
+  { t: 0.0, sun: '#aac2f0', sunIntensity: 1.0, hemiSky: '#6b85bd', hemiGround: '#2f3d24', hemiIntensity: 2.55, fog: '#243252', fogNear: 45, fogFar: 150, exposure: 0.9, turbidity: 1.2, rayleigh: 0.6, mie: 0.002, night: 1 },
+  // still night, holds the midnight look until first light
+  { t: 0.1, sun: '#aac2f0', sunIntensity: 1.0, hemiSky: '#6b85bd', hemiGround: '#2f3d24', hemiIntensity: 2.55, fog: '#243252', fogNear: 45, fogFar: 150, exposure: 0.9, turbidity: 1.2, rayleigh: 0.6, mie: 0.002, night: 1 },
+  // first light. Cooler and pinker than the matching dusk row on purpose:
+  // dawn is the one time of day the palette is not a mirror of the evening.
+  { t: 0.16, sun: '#c9a7c8', sunIntensity: 0.6, hemiSky: '#8290b8', hemiGround: '#38452c', hemiIntensity: 2.76, fog: '#5d6a86', fogNear: 46, fogFar: 158, exposure: 0.95, turbidity: 6, rayleigh: 4.0, mie: 0.005, night: 0.75 },
+  // sunrise
+  { t: 0.22, sun: '#ffb37a', sunIntensity: 0.9, hemiSky: '#a9bcd2', hemiGround: '#3e4c2c', hemiIntensity: 1.84, fog: '#c9a98f', fogNear: 48, fogFar: 172, exposure: 0.98, turbidity: 8, rayleigh: 3.2, mie: 0.008, night: 0.4 },
+  // early morning
+  { t: 0.28, sun: '#ffd9a8', sunIntensity: 1.15, hemiSky: '#bcc9d8', hemiGround: '#445426', hemiIntensity: 1.24, fog: '#c4c4bd', fogNear: 52, fogFar: 180, exposure: 1.02, turbidity: 6, rayleigh: 2.4, mie: 0.007, night: 0.15 },
+  // morning
+  { t: 0.36, sun: '#fff0d2', sunIntensity: 1.3, hemiSky: '#c6dced', hemiGround: '#48592f', hemiIntensity: 0.99, fog: '#b9cfd8', fogNear: 55, fogFar: 188, exposure: 1.05, turbidity: 5, rayleigh: 1.8, mie: 0.006, night: 0.03 },
+  // noon: the v1 lighting, unchanged
+  { t: 0.5, sun: '#fff3dd', sunIntensity: 1.35, hemiSky: '#cfe3ef', hemiGround: '#4a5c33', hemiIntensity: 0.95, fog: '#b9cfd8', fogNear: 55, fogFar: 190, exposure: 1.05, turbidity: 4, rayleigh: 1.4, mie: 0.006, night: 0 },
+  // afternoon
+  { t: 0.64, sun: '#ffeccb', sunIntensity: 1.3, hemiSky: '#cadfec', hemiGround: '#4a5c33', hemiIntensity: 0.99, fog: '#bcd0d6', fogNear: 55, fogFar: 188, exposure: 1.05, turbidity: 5, rayleigh: 1.8, mie: 0.006, night: 0.03 },
+  // golden hour
+  { t: 0.72, sun: '#ffc98a', sunIntensity: 1.15, hemiSky: '#d9c3b4', hemiGround: '#4a5030', hemiIntensity: 1.29, fog: '#cfb69a', fogNear: 52, fogFar: 180, exposure: 1.02, turbidity: 7, rayleigh: 2.4, mie: 0.007, night: 0.15 },
+  // sunset
+  { t: 0.78, sun: '#ff9a5c', sunIntensity: 0.9, hemiSky: '#c09a92', hemiGround: '#38401f', hemiIntensity: 2.1, fog: '#d09070', fogNear: 48, fogFar: 172, exposure: 0.98, turbidity: 9, rayleigh: 3.2, mie: 0.01, night: 0.4 },
+  // dusk
+  { t: 0.84, sun: '#b083a8', sunIntensity: 0.6, hemiSky: '#8290b8', hemiGround: '#38452c', hemiIntensity: 2.76, fog: '#6a6a8c', fogNear: 46, fogFar: 158, exposure: 0.95, turbidity: 6, rayleigh: 4.0, mie: 0.006, night: 0.75 },
+  // nightfall, back to the midnight look
+  { t: 0.9, sun: '#aac2f0', sunIntensity: 1.0, hemiSky: '#6b85bd', hemiGround: '#2f3d24', hemiIntensity: 2.55, fog: '#243252', fogNear: 45, fogFar: 150, exposure: 0.9, turbidity: 1.2, rayleigh: 0.6, mie: 0.002, night: 1 },
+]
+
+// The camp beacon is meshBasic + fog:false + toneMapped:false, so it ignores
+// every light in the scene and would read as a neon pillar at midnight. This
+// scales its opacity down at night rather than touching the tuned day values.
+export const CAMP_BEACON_NIGHT_MULT = 0.45
+
+// ---------------------------------------------------------------------------
+// Fireflies
+//
+// One instanced mesh, one material, hidden entirely by day. They live in a disc
+// that follows the cat and wrap when they fall behind, so 48 of them look like
+// a forest full rather than a sparse scatter across 200m of world.
+// ---------------------------------------------------------------------------
+export const FIREFLY_COUNT = 70
+export const FIREFLY_RADIUS = 14 // metres; the disc that follows the cat
+export const FIREFLY_FADE_BAND = 5 // metres of fade at the outer edge, so none pop
+export const FIREFLY_MIN_HEIGHT = 0.3 // above ground
+export const FIREFLY_MAX_HEIGHT = 2.2
+export const FIREFLY_SIZE = 0.05 // radius of one mote. At 0.09 a lit mote read as a
+// hard-edged octagon rather than a glowing point: additive + meshBasic gives a
+// disc of uniform brightness, so the only thing keeping it soft is being small.
+export const FIREFLY_DRIFT_SPEED = 0.35 // m/s of lazy horizontal wander
+export const FIREFLY_BOB_RATE = 0.7 // Hz of vertical bob
+export const FIREFLY_BOB_AMOUNT = 0.35 // metres
+export const FIREFLY_BLINK_RATE_MIN = 0.6 // Hz
+export const FIREFLY_BLINK_RATE_MAX = 1.6
+// Exponent applied to the raw sine, to push most of the cycle dark so what reads
+// is the flash. Cubed left only one or two of the swarm lit at any instant,
+// which looked like a bug rather than a meadow.
+export const FIREFLY_BLINK_SHARPNESS = 2
+export const FIREFLY_COLOR = '#dff77a'
+// Night factor at which they start to appear. 0.55 rather than a lower number
+// because that is where the palette sits when the sun is within a few degrees
+// of the horizon: at 0.35 the swarm was still lit with the sun 13 degrees up.
+export const FIREFLY_NIGHT_THRESHOLD = 0.55
+export const FIREFLY_OPACITY = 0.95
+// When a mote falls out of the disc it is respawned on the rim. At a 7 m/s run
+// the cat covers the whole 14m disc in two seconds, twenty times faster than
+// the 0.35 m/s drift, so a uniformly random rim angle puts most of the swarm
+// behind her and the meadow goes dark exactly while she is exploring. Moving,
+// the respawn angle is drawn from a cone this wide centred on her heading, so
+// she runs into fireflies instead of away from them. Standing still, the angle
+// is uniform and this is unused.
+export const FIREFLY_AHEAD_SPREAD = 2.2 // radians of cone, centred on velocity
+export const FIREFLY_AHEAD_MIN_SPEED = 0.6 // m/s below which she counts as still
+// Respawned motes are aimed back across the disc rather than in a random
+// direction, so the population circulates through the bright middle instead of
+// collecting on the dark rim.
+export const FIREFLY_RESPAWN_INWARD_SPREAD = 1.6 // radians of jitter about "inward"
