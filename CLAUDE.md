@@ -206,7 +206,8 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 
    This also fixed a bug that predates it: `font: '700 44px/1 inherit'` is an **invalid CSS shorthand** (`inherit` is not a legal family inside it), so the browser dropped the whole declaration and the title, the toast and the action button had all been rendering at 16px/400 since v1. A `<button>` also needs an explicit `fontFamily: 'inherit'`. Use separate `fontSize` / `fontWeight` / `lineHeight` properties, never the shorthand, unless you are naming a real family list the way `DebugOverlay` does.
 3. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
-4. **Sound.** **BUILT, awaiting Phil's ear and an iPad check.** Every sound is
+4. ~~**Sound.**~~ **DONE** — confirmed audible on the iPad and the mix approved
+   by ear, unchanged from the tuned defaults. Every sound is
    synthesised in `src/audio/engine.ts`. There are no audio files: nothing to
    fetch, nothing for Safari to fail to decode, no new dependency, no
    `public/audio`. Paws are a bandpassed noise burst, the purr is 25Hz amplitude
@@ -244,11 +245,17 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
    3 creation ticks for 3 taps and none for a no-op tap. Zero console errors.
    Draw calls and triangles unchanged, since `AudioDriver` renders `null`.
 
-   **Not verified: whether any of it actually sounds good.** That is Phil's ear,
-   and the meow is the one most likely to need retuning. **Also unverified: the
-   iOS hardware mute switch.** WebAudio on iOS can be silenced by the physical
-   switch regardless of volume, and Chrome cannot reproduce that. If the iPad is
-   silent with the volume up, check the side switch before debugging the code.
+   Confirmed on the iPad: audible, and the mix was approved by ear without a
+   single gain being changed. **The gains and the meow's pitch arc are tuned and
+   do not need revisiting.** The one thing still not separately measured is
+   framerate, because audio adds no geometry, no draw call and no per-frame
+   allocation, so there was nothing new to measure — but that reasoning is not a
+   device reading.
+
+   **If it ever goes silent on a device, check Low Power Mode first.** That was
+   the entire cause of an iPhone that would not make a sound with the ringer on
+   and the volume up, and it cost a debugging round before the code was even
+   suspect. The `?debug=1` audio readout exists to make that a ten-second check.
 5. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
 6. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
 7. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
