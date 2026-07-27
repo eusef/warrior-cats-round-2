@@ -40,6 +40,7 @@ let noise: AudioBuffer | null = null
 let purr: { gain: GainNode; sources: Array<AudioScheduledSourceNode> } | null = null
 let purring = false
 let visibilityHooked = false
+let retryHooked = false
 
 /**
  * Counts every voice ever fired. Verification asserts on these rather than on
@@ -82,15 +83,76 @@ export function unlockAudio() {
   // console otherwise, and zero console errors is the bar.
   if (ctx.state !== 'running') ctx.resume().catch(() => {})
 
-  // Switching apps on the iPad suspends the context, and nothing would ever
-  // resume it: the title tap has long since happened, so the game would be
-  // silent for the rest of the session. The page already has user activation
-  // by this point, so resuming on the way back is allowed.
-  if (!visibilityHooked && typeof document !== 'undefined') {
-    visibilityHooked = true
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
-    })
+  // iOS needs more than create-and-resume. Safari does not really hand over the
+  // output until a buffer has actually been played from inside the gesture, so
+  // play one silent sample. This costs nothing and is the difference between
+  // sound and silence on a phone.
+  try {
+    const src = ctx.createBufferSource()
+    src.buffer = ctx.createBuffer(1, 1, 22050)
+    src.connect(ctx.destination)
+    src.start(0)
+  } catch {
+    // Older Safari can throw on a 1-frame buffer. Nothing to do about it.
+  }
+
+  hookRetry()
+  hookVisibility()
+}
+
+/**
+ * If the title tap did not manage to start the context, every later touch tries
+ * again. Silent audio for a whole session because one gesture was rejected is
+ * not a failure worth shipping, and this cannot fire once audio is running.
+ */
+function hookRetry() {
+  if (retryHooked || typeof document === 'undefined') return
+  retryHooked = true
+  const retry = () => {
+    if (!ctx) return
+    if (ctx.state === 'running') {
+      document.removeEventListener('pointerdown', retry, true)
+      document.removeEventListener('touchend', retry, true)
+      return
+    }
+    ctx.resume().catch(() => {})
+  }
+  document.addEventListener('pointerdown', retry, true)
+  document.addEventListener('touchend', retry, true)
+}
+
+/**
+ * Switching apps suspends the context, and nothing would ever resume it: the
+ * title tap has long since happened, so the game would be silent for the rest
+ * of the session. The page already has user activation by this point.
+ */
+function hookVisibility() {
+  if (visibilityHooked || typeof document === 'undefined') return
+  visibilityHooked = true
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
+  })
+}
+
+/** Everything the debug overlay needs to tell unlock, routing and mix apart. */
+export function audioDiagnostics() {
+  const total =
+    audioCounts.step +
+    audioCounts.meow +
+    audioCounts.pounce +
+    audioCounts.catch +
+    audioCounts.ceremony +
+    audioCounts.tick +
+    audioCounts.bird
+  return {
+    state: ctx ? ctx.state : 'none',
+    rate: ctx ? Math.round(ctx.sampleRate / 1000) : 0,
+    total,
+    meow: audioCounts.meow,
+    step: audioCounts.step,
+    bird: audioCounts.bird,
+    purring,
+    level: audioLevel(),
   }
 }
 

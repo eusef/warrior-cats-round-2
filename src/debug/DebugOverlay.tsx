@@ -4,6 +4,7 @@ import { HUNTS_TO_WARRIOR } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import { attachSceneToBridge, attachStepToBridge, DEBUG } from './expose'
+import { audioDiagnostics } from '../audio/engine'
 
 /**
  * Samples gl.info.render inside the R3F loop and hands the numbers to a DOM
@@ -69,6 +70,7 @@ export function DebugOverlay() {
       const s = live.stats
       const c = live.cat
       const g = useGame.getState()
+      const a = audioDiagnostics()
       el.textContent =
         `fps      ${s.fps.toFixed(0).padStart(5)}\n` +
         `draws    ${String(s.drawCalls).padStart(5)}  / 100\n` +
@@ -79,7 +81,14 @@ export function DebugOverlay() {
         `speed    ${c.speed.toFixed(2)}\n` +
         `action   ${c.action}${live.resting ? ' (rest)' : ''}\n` +
         `hunts    ${g.huntCount}/${HUNTS_TO_WARRIOR}${g.identity.warrior ? ' warrior' : ''}` +
-        `   seed ${g.seed}`
+        `   seed ${g.seed}\n` +
+        // Three numbers that tell the three iOS failure modes apart. state
+        // not running = the gesture never unlocked it. cues 0 = the driver is
+        // not firing. Both fine but lvl 0 = nothing reaches the master bus.
+        // All three healthy and still silent = the device is routing it away.
+        `audio    ${a.state} ${a.rate}k  lvl ${a.level.toFixed(3)}\n` +
+        `cues     ${a.total} (meow ${a.meow} step ${a.step} bird ${a.bird})` +
+        `${a.purring ? ' purr' : ''}`
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
