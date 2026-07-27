@@ -224,3 +224,40 @@ export const CEREMONY_AUTO_DISMISS = 12 // seconds before the ceremony closes it
 // ---------------------------------------------------------------------------
 export const JOYSTICK_RADIUS = 62 // CSS px the thumb can travel from centre
 export const JOYSTICK_DEADZONE = 0.12 // normalised magnitude below which input is zero
+
+// ---------------------------------------------------------------------------
+// Audio
+//
+// Every sound is synthesised in src/audio/engine.ts. There are no audio files,
+// so these numbers are the whole mix: there is no sample to re-record.
+// Gains are pre-master and stack multiplicatively with AUDIO_MASTER_GAIN.
+// ---------------------------------------------------------------------------
+export const AUDIO_MASTER_GAIN = 0.55 // everything passes through this one fader
+
+// Paws. Cadence is per second at the named speed and scales linearly in
+// between, so a half-pushed stick gives half-speed footfalls without a
+// separate walk/run switch.
+export const AUDIO_STEP_CADENCE_WALK = 2.2 // paw sounds per second at CAT_WALK_SPEED
+export const AUDIO_STEP_CADENCE_RUN = 4.0 // paw sounds per second at CAT_RUN_SPEED
+export const AUDIO_STEP_GAIN = 0.34
+export const AUDIO_STEP_CROUCH_MULT = 0.45 // stalking is quieter; matches the animation duck
+export const AUDIO_STEP_MIN_SPEED = 0.15 // m/s below which paws go silent
+
+// Purr. 25Hz is close to a real cat's purr rate; the fade keeps arriving at
+// and leaving camp from clicking.
+export const AUDIO_PURR_GAIN = 0.2
+export const AUDIO_PURR_RATE = 25 // Hz of amplitude modulation
+export const AUDIO_PURR_FADE = 0.35 // seconds to fade in and out
+
+// One-shots.
+export const AUDIO_MEOW_GAIN = 0.34
+export const AUDIO_POUNCE_GAIN = 0.3
+export const AUDIO_CATCH_GAIN = 0.3
+export const AUDIO_CEREMONY_GAIN = 0.34
+export const AUDIO_TICK_GAIN = 0.13 // creation-sheet taps, deliberately near-subliminal
+
+// Birdsong. Gaps are seconds of real time between one bird and the next.
+export const AUDIO_BIRD_GAIN = 0.14
+export const AUDIO_BIRD_MIN_GAP = 4
+export const AUDIO_BIRD_MAX_GAP = 11
+export const AUDIO_BIRD_FIRST_GAP = 1.5 // seconds before the first bird after audio starts

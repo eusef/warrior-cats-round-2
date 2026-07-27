@@ -16,6 +16,8 @@ import { Ceremony } from './ui/Ceremony'
 import { DebugOverlay, DebugSampler } from './debug/DebugOverlay'
 import { DEBUG } from './debug/expose'
 import { TITLE_HINT } from './content/lines'
+import { AudioDriver } from './audio/AudioDriver'
+import { unlockAudio } from './audio/engine'
 
 export function App() {
   return (
@@ -43,6 +45,9 @@ export function App() {
           <Prey />
         </Suspense>
         <FollowCamera />
+        {/* Last frame subscriber, deliberately: it reads the cat state every
+            other system has already finished writing this frame. */}
+        <AudioDriver />
         {DEBUG && <DebugSampler />}
       </Canvas>
 
@@ -68,6 +73,10 @@ function TitleScreen() {
   const start = useGame((s) => s.start)
 
   const begin = useCallback(() => {
+    // Must happen synchronously inside the gesture. iOS will not let an
+    // AudioContext start anywhere else, and a resume() deferred to a promise
+    // or a timeout is already outside the gesture as far as Safari is concerned.
+    unlockAudio()
     start()
   }, [start])
 

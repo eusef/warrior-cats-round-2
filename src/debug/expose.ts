@@ -1,4 +1,20 @@
 import { live, resetLive } from '../game/live'
+import {
+  audioCounts,
+  audioLevel,
+  audioState,
+  isPurring,
+  playCatch,
+  playCeremony,
+  playChirp,
+  playMeow,
+  playPounce,
+  playStep,
+  playTick,
+  startPurr,
+  stopPurr,
+  unlockAudio,
+} from '../audio/engine'
 import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
 import { HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
@@ -46,6 +62,18 @@ export interface GameBridge {
   /** Closes it, the way the Continue tap does. */
   endCeremony: () => void
   ceremony: () => Record<string, unknown> | null
+  /**
+   * Sound is the one system a screenshot cannot check. `counts` proves the
+   * right cue fired, `level` proves it actually reached the master bus.
+   */
+  audio: {
+    state: () => string
+    level: () => number
+    counts: () => Record<string, number>
+    purring: () => boolean
+    unlock: () => void
+    play: (name: string) => void
+  }
   /** Installed by DebugSampler once the R3F root exists. */
   step?: (count?: number, dt?: number) => number
 }
@@ -142,6 +170,29 @@ export function installBridge() {
     ceremony: () => {
       const c = useGame.getState().ceremony
       return c ? { ...c } : null
+    },
+
+    audio: {
+      state: () => audioState(),
+      level: () => audioLevel(),
+      counts: () => ({ ...audioCounts }),
+      purring: () => isPurring(),
+      unlock: () => unlockAudio(),
+      play: (name: string) => {
+        const voices: Record<string, () => void> = {
+          step: () => playStep(1),
+          meow: () => playMeow(),
+          meowHungry: () => playMeow(true),
+          pounce: playPounce,
+          catch: playCatch,
+          ceremony: playCeremony,
+          tick: playTick,
+          chirp: playChirp,
+          purrOn: startPurr,
+          purrOff: stopPurr,
+        }
+        voices[name]?.()
+      },
     },
   }
 

@@ -205,7 +205,49 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 
    This also fixed a bug that predates it: `font: '700 44px/1 inherit'` is an **invalid CSS shorthand** (`inherit` is not a legal family inside it), so the browser dropped the whole declaration and the title, the toast and the action button had all been rendering at 16px/400 since v1. A `<button>` also needs an explicit `fontFamily: 'inherit'`. Use separate `fontSize` / `fontWeight` / `lineHeight` properties, never the shorthand, unless you are naming a real family list the way `DebugOverlay` does.
 3. **Warrior name ceremony.** Start as `<Prefix>paw`. After N successful hunts, the name changes to `<Prefix><Suffix>` with a small ceremony beat. Cheap progression, lands hard for a reader of the books.
-4. **Sound.** Meow, purr while resting, paws in leaf litter, birdsong ambience, a sting on a successful pounce. Silence is the single biggest reason a working game feels broken.
+4. **Sound.** **BUILT, awaiting Phil's ear and an iPad check.** Every sound is
+   synthesised in `src/audio/engine.ts`. There are no audio files: nothing to
+   fetch, nothing for Safari to fail to decode, no new dependency, no
+   `public/audio`. Paws are a bandpassed noise burst, the purr is 25Hz amplitude
+   modulation on low filtered noise, the meow is a pitch-arced sawtooth through
+   two formant bandpasses, birds are swept sine blips with a random stereo pan.
+
+   `src/audio/AudioDriver.tsx` is the only thing that decides *when* a sound
+   plays, and it is the only integration point. It derives every cue from `live`
+   and from store snapshots rather than being called at the event sites, so
+   PlayerCat, Prey, CreateCat and the store contain no audio code at all. The one
+   trick worth knowing: `cat.eatT` only ever rises on a successful catch, so
+   watching its rising edge *is* the catch event. It is mounted **inside** the
+   Canvas as the last `useFrame` subscriber, not outside with its own rAF, so
+   footstep cadence shares the delta the game integrated with and the whole
+   system steps under `__game.step()`.
+
+   Three things that will bite whoever touches this next. **`ctx.resume()`
+   settles asynchronously**, several frames after the title tap, so the greeting
+   meow cannot be a phase edge: the not-ready tracker sync consumes the edge
+   before audio is live, and the greeting was silently swallowed every single
+   time until it became a one-shot flag. **The title tap is the only unlock**,
+   which is why `unlockAudio()` also installs a `visibilitychange` resume;
+   without it, switching apps on the iPad would suspend the context and nothing
+   would ever start it again. **There is no mute button** by deliberate choice,
+   because the HUD is two bars and one button and the iPad has hardware volume.
+
+   Verified in Chrome by counting cues off `__game.audio.counts()` and by reading
+   RMS off an analyser tapped on the master bus, never by ear or by pixels: real
+   tap moves the context from `suspended` to `running`; run cadence 12 paws in
+   3.0s at 7 m/s (exactly `AUDIO_STEP_CADENCE_RUN`), walk 3, idle and stopped 0;
+   purr starts on arriving at camp and stops on leaving, balanced starts/stops,
+   sustaining at 0.11 RMS; pounce and catch fire once each per hunt; the hungry
+   meow fires once at the threshold and does not repeat while hunger stays low;
+   the ceremony sting fires once; 8 birds in 60s against a configured 4-11s gap;
+   3 creation ticks for 3 taps and none for a no-op tap. Zero console errors.
+   Draw calls and triangles unchanged, since `AudioDriver` renders `null`.
+
+   **Not verified: whether any of it actually sounds good.** That is Phil's ear,
+   and the meow is the one most likely to need retuning. **Also unverified: the
+   iOS hardware mute switch.** WebAudio on iOS can be silenced by the physical
+   switch regardless of volume, and Chrome cannot reproduce that. If the iPad is
+   silent with the volume up, check the side switch before debugging the code.
 5. **Juice pass.** Camera lag, tail sway, ear flick on idle, squash on landing, screen-edge vignette when hunger is low. Feel outranks features.
 6. **Day and night.** `<Sky>` sun angle on a slow cycle, warmer light at dusk, fireflies. Enormous atmosphere for very little code.
 7. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
