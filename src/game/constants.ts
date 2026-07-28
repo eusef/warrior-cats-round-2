@@ -660,6 +660,23 @@ export const RIVAL_EYE_COLOR = '#f2d24a'
 // would eat movement area.
 export const DUEL_BUTTON_SIZE = 96 // CSS px; well over the 44px touch minimum
 export const DUEL_BUTTON_GAP = 12
+
+/**
+ * Where the bottom-right controls sit, in CSS px, before the safe-area inset
+ * is added on top.
+ *
+ * The vertical margin is 72 and not 28 because of the home indicator. In
+ * landscape Safari WITHOUT Add to Home Screen, env(safe-area-inset-bottom)
+ * resolves to 0px, so a 28px margin puts the button's lower edge inside the
+ * strip iPadOS reserves for the swipe-up gesture and the system starts
+ * competing for the touch. That is what made the Stalk button "hard to press",
+ * and it is what triggered the setPointerCapture throw that used to kill the
+ * button outright. Both the Stalk button and the four duel buttons use these.
+ */
+export const HUD_EDGE_MARGIN_X = 40
+export const HUD_EDGE_MARGIN_Y = 72
+/** The Stalk / action button. Well over the 44px touch minimum. */
+export const ACTION_BUTTON_SIZE = 116
 /** Per-second exponential approach of the drawn health bar toward the real
  *  value, so damage reads as a tick-down rather than a jump cut. */
 export const HEALTH_BAR_EASE = 7

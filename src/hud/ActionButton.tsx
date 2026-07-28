@@ -1,4 +1,5 @@
 import { RefObject, useCallback, useEffect, useRef } from 'react'
+import { ACTION_BUTTON_SIZE, HUD_EDGE_MARGIN_X, HUD_EDGE_MARGIN_Y } from '../game/constants'
 import { setActionHeld } from '../input/useTouchInput'
 
 interface Props {
@@ -9,7 +10,10 @@ interface Props {
 
 /**
  * One button, two verbs: hold to crouch and stalk, release to pounce.
- * 116px, well over the 44px touch minimum, sat above the home indicator.
+ *
+ * Sat clear of the home indicator, which is not a nicety: see
+ * HUD_EDGE_MARGIN_Y, and see the comment in press() for what iPadOS competing
+ * for this touch used to do to the button.
  */
 export function ActionButton({ labelRef, btnRef }: Props) {
   const ownRef = useRef<HTMLButtonElement>(null)
@@ -78,10 +82,10 @@ export function ActionButton({ labelRef, btnRef }: Props) {
       onContextMenu={(e) => e.preventDefault()}
       style={{
         position: 'fixed',
-        right: 'calc(28px + var(--safe-right))',
-        bottom: 'calc(28px + var(--safe-bottom))',
-        width: 116,
-        height: 116,
+        right: `calc(${HUD_EDGE_MARGIN_X}px + var(--safe-right))`,
+        bottom: `calc(${HUD_EDGE_MARGIN_Y}px + var(--safe-bottom))`,
+        width: ACTION_BUTTON_SIZE,
+        height: ACTION_BUTTON_SIZE,
         borderRadius: '50%',
         border: '4px solid rgba(255,255,255,0.55)',
         background: 'radial-gradient(circle at 35% 30%, #d8a24e, #a9631f)',

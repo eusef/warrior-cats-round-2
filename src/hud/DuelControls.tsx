@@ -1,5 +1,11 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { DUEL_BUTTON_GAP, DUEL_BUTTON_SIZE } from '../game/constants'
+import {
+  ACTION_BUTTON_SIZE,
+  DUEL_BUTTON_GAP,
+  DUEL_BUTTON_SIZE,
+  HUD_EDGE_MARGIN_X,
+  HUD_EDGE_MARGIN_Y,
+} from '../game/constants'
 import {
   FIGHT_LABEL,
   MOVE_LABEL_FLEE,
@@ -33,9 +39,9 @@ import { tapDuelMove, tapFight, tapFlee, type DuelMove } from '../input/useTouch
  */
 
 const GRID = DUEL_BUTTON_SIZE * 2 + DUEL_BUTTON_GAP
-/** Clears the 116px Stalk button (bottom 28) by 16px. The Fight prompt and the
- *  four move buttons never coexist, but Fight and Stalk do. */
-const FIGHT_BOTTOM = 160
+/** Stacked directly above the Stalk button with a 16px gutter. The Fight prompt
+ *  and the four move buttons never coexist, but Fight and Stalk do. */
+const FIGHT_BOTTOM = HUD_EDGE_MARGIN_Y + ACTION_BUTTON_SIZE + 16
 
 export interface DuelControlRefs {
   fight: RefObject<HTMLButtonElement>
@@ -53,7 +59,7 @@ export function DuelControls({ fight, moves }: DuelControlRefs) {
         accent="attack"
         size={DUEL_BUTTON_SIZE}
         style={{
-          right: `calc(28px + var(--safe-right))`,
+          right: `calc(${HUD_EDGE_MARGIN_X}px + var(--safe-right))`,
           bottom: `calc(${FIGHT_BOTTOM}px + var(--safe-bottom))`,
         }}
       />
@@ -62,8 +68,8 @@ export function DuelControls({ fight, moves }: DuelControlRefs) {
         ref={moves}
         style={{
           position: 'fixed',
-          right: 'calc(28px + var(--safe-right))',
-          bottom: 'calc(28px + var(--safe-bottom))',
+          right: `calc(${HUD_EDGE_MARGIN_X}px + var(--safe-right))`,
+          bottom: `calc(${HUD_EDGE_MARGIN_Y}px + var(--safe-bottom))`,
           width: GRID,
           height: GRID,
           display: 'grid',
