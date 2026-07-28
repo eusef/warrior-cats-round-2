@@ -161,6 +161,13 @@ line this actually moves is the material count. She is one cat, not a system:
 adding a second rival would cost another five, and at that point the materials
 should be shared rather than cloned.
 
+**Confirmed on the iPad at a solid 60fps**, two cats and a duel over the
+beacon's transparent overdraw at dpr 2. This is the first line in this table
+with a real device reading behind it rather than a desktop one, and it is the
+answer to the standing warning below that the budget is unverified until the
+iPad says so. It does not license a second rival: this is one more cat measured,
+not headroom measured.
+
 ## Assets
 
 Quaternius CC0 low-poly packs in `public/models/`, `.glb` format. There is no cat model in the pack: the Fox rig is the stand-in cat, recolored per character. Do not spend a session trying to model a cat. Do not generate placeholder cubes either, the fox is already there.
@@ -430,8 +437,9 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
 12. **Cat Models**(ignore for now). Need to update the models to look like cats.
 
-13. **Combat.** **BUILT. Touch confirmed on the iPad; framerate and the four
-    combat sounds still unchecked.** Real-time positional duelling
+13. ~~**Combat.**~~ **DONE** — built, verified in Chrome, and confirmed on the
+    iPad: touch, a solid 60fps with two cats, and the mix by ear. Real-time
+    positional duelling
     against one wandering rival, built to `docs/specs/combat.md`. The rules are
     `src/game/duel.ts` as pure functions with no R3F, no store and no `live`
     import, so every one of them is assertable headlessly the same way
@@ -500,17 +508,24 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
     written up in the iPad Safari rules and neither should be reintroduced.
     `HUD_EDGE_MARGIN_Y = 72` is part of that result and is not a free number.
 
-    **Still not verified: framerate**, which is the real question, because this
-    is the first time two skinned, animated cats are on screen at once on top of
-    the beacon's transparent overdraw at dpr 2. Nothing about the button result
-    speaks to it: a HUD tap landing correctly says nothing about GPU headroom.
-    **Also still unverified by ear: all four new combat voices** (swipe, kick,
-    impact, whiff), which have never been through a device mix check. The whiff
-    in particular measured 4.7x below the pounce because its Q-4 bandpass passes
-    only about 250Hz of the noise buffer; it is meant to be the quietest of the
-    four, but whether 0.17 actually reads as 0.17 on the iPad's speakers is a
-    listen, not a calculation. And **the CPU has never been watched by Mila**,
-    which is the only test of whether it should be smarter or dumber.
+    **Confirmed on the iPad: a solid 60fps**, with two skinned animated cats on
+    screen at once on top of the beacon's transparent overdraw at dpr 2. That
+    was the open question and it is answered. It is also the headroom reading
+    that matters most for what comes next: the second cat cost five materials
+    and about 12 draw calls and the device did not care, so the budget in this
+    file is measured, not theoretical. A *third* cat is still not free -- share
+    the materials rather than cloning a third set.
+
+    **Confirmed on the iPad by ear: all four combat voices**, swipe, kick,
+    impact and whiff, approved with no gain changed. The whiff reads correctly
+    at 4.7x below the pounce despite the Q-4 bandpass passing only about 250Hz
+    of the noise buffer, so **the combat gains are tuned and do not need
+    revisiting**, the same standing as the rest of the mix.
+
+    The one thing still open is not a verification gate: **the CPU has never
+    been watched by Mila**, which is the only test of whether Ripplefoot should
+    be smarter or dumber. That is a design question for after she plays it, and
+    the knobs for it are the `RIVAL_*` constants.
 
 ## Commands
 
