@@ -31,7 +31,12 @@ This is for one 10-year-old. If it would not fit in a Bluey episode, it does not
 - The grim material from the source books: murder, exile, prophecy dread, StarClan death visions, the Dark Forest.
 - **Any generated or free-text dialogue.** Every NPC line is a hand-written string in `src/content/lines.ts`. No LLM API calls in the shipped game, ever, for any reason. This rule exists to close the whole category rather than filter it line by line.
 
-Rivals get chased off, not fought. Prey is caught and the animation cuts away. When something sits near the line, stop and ask rather than writing it.
+Rivals are chased off, not beaten down: a duel ends with the loser yielding and
+running, never with a cat dying, and injury stays a number on a health bar with
+no blood, no wound and no killing blow. `Attack` and the two `Idle_HitReact`
+clips are bound for exactly that beat and `Death` never is. Prey is caught and
+the animation cuts away. When something sits near the line, stop and ask rather
+than writing it.
 
 ## Stack (pinned, do not change)
 
@@ -50,6 +55,7 @@ src/
   App.tsx              # Canvas + HUD + Suspense boundary
   game/
     store.ts           # zustand: needs, position, time, save/load
+    duel.ts            # pure combat rules; no R3F, no store, no live
     constants.ts       # ALL tunable numbers live here, nowhere else
   world/
     Terrain.tsx
@@ -57,12 +63,14 @@ src/
     Camp.tsx
   actors/
     PlayerCat.tsx
+    RivalCat.tsx       # the CPU cat: wanders, then duels
     Prey.tsx
     useCatAnimation.ts
   hud/
     Hud.tsx
     Joystick.tsx
     ActionButton.tsx
+    DuelControls.tsx   # Fight prompt + the four move buttons
   ui/
     CreateCat.tsx      # character creation sheet; DOM over the canvas, not WebGL
   input/
@@ -101,7 +109,7 @@ public/models/         # .glb only
 | Draw calls | 100 |
 | Triangles | 150k |
 | Texture size | 1024x1024 |
-| Unique materials | 17 |
+| Unique materials | 22 |
 
 Raised from 15 to 16 for the camp beacon, which draws its shaft twice: once
 depth-tested and once with depth testing off so it stays visible through the
