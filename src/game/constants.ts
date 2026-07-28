@@ -491,3 +491,49 @@ export const FIREFLY_AHEAD_MIN_SPEED = 0.6 // m/s below which she counts as stil
 // direction, so the population circulates through the bright middle instead of
 // collecting on the dark rim.
 export const FIREFLY_RESPAWN_INWARD_SPREAD = 1.6 // radians of jitter about "inward"
+
+// --- Named landmarks --------------------------------------------------------
+// Three places worth walking to. Each is discovered once, permanently, by
+// entering its trigger. Positions are spread to three different corners so
+// finding one does not hand her the other two, and every one of them sits well
+// outside FOLIAGE_CLEARING_RADIUS so none can overlap camp.
+//
+// The IDs these feed are persisted as bits in the save. Append new landmarks to
+// the end of the table in game/landmarks.ts, never reorder it, exactly like
+// NAME_PREFIXES.
+
+/** Seconds a discovery toast stays up. Longer than TOAST_DURATION: this one has
+ *  two lines to read, and 1.8s is not enough for a 10-year-old to finish them. */
+export const TOAST_DURATION_LONG = 5.2
+
+export const FOURTREES_POS: readonly [number, number] = [-56, -34]
+/** Metres from centre to each trunk. She walks into the middle of the ring. */
+export const FOURTREES_RING_RADIUS = 8
+export const FOURTREES_TRIGGER_RADIUS = 11
+export const FOURTREES_SCALE = 2.3 // multiplies the ordinary tree, these are the great oaks
+
+export const SUNNINGROCKS_POS: readonly [number, number] = [58, 46]
+export const SUNNINGROCKS_TRIGGER_RADIUS = 10
+export const SUNNINGROCKS_SPREAD = 5.2 // metres, radius of the boulder cluster
+export const SUNNINGROCKS_COUNT = 7
+
+/** The Thunderpath runs the full width of the world, so its trigger is a band
+ *  on z rather than a circle. A circle at the midpoint would fire nothing if she
+ *  reached the road out at x = -70, which is most of its length. */
+export const THUNDERPATH_Z = -80
+export const THUNDERPATH_WIDTH = 7 // metres of black stone
+export const THUNDERPATH_TRIGGER_HALF_WIDTH = 7 // |z - THUNDERPATH_Z| below this discovers it
+export const THUNDERPATH_SEGMENTS = 48 // samples across the world, so it drapes over the hills
+export const THUNDERPATH_LIFT = 0.06 // metres above the ground, to beat z-fighting
+
+/** Foliage inside these is deleted after placement, so nothing grows through a
+ *  landmark. Deliberately larger than the trigger radii: the clearing should
+ *  read as intentional from outside before she is close enough to discover it. */
+export const FOURTREES_KEEPOUT = 13
+export const SUNNINGROCKS_KEEPOUT = 11
+export const THUNDERPATH_KEEPOUT_HALF_WIDTH = 8
+
+export const LANDMARK_COLOR_TRUNK = '#4a3524'
+export const LANDMARK_COLOR_CANOPY = '#33591f'
+export const LANDMARK_COLOR_ROCK = '#9a9384'
+export const LANDMARK_ROAD_COLOR = '#2e2e31'

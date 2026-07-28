@@ -28,6 +28,7 @@ import {
   EYE_COLORS,
   PELTS,
 } from '../game/constants'
+import { undiscoveredHit } from '../game/landmarks'
 import { live, resetLive } from '../game/live'
 import { feed, tickNeeds } from '../game/needs'
 import { useGame, type Identity } from '../game/store'
@@ -306,6 +307,12 @@ export function PlayerCat() {
       if (event === 'hunger-low' || event === 'hunger-empty') {
         useGame.getState().showToast(pick(HUNGER_LINES, event === 'hunger-empty' ? 1 : 0))
       }
+
+      // Last toast written in the frame, so it wins: the toast has no queue, and
+      // arriving somewhere new outranks a mouse. No edge flag is needed because
+      // discover() sets the bit permanently and guards its own repeat.
+      const found = undiscoveredHit(cat.pos.x, cat.pos.z, useGame.getState().discovered)
+      if (found >= 0) useGame.getState().discover(found)
 
       saveTimer.current += delta
       if (saveTimer.current >= SAVE_INTERVAL_SEC) {

@@ -121,3 +121,28 @@ export const CEREMONY_DISMISS = 'Continue'
 export function ceremonyRename(apprentice: string): string {
   return `${apprentice}, from this moment you will be known as`
 }
+
+// --- Named landmarks --------------------------------------------------------
+// One name and one journal entry per landmark, in table order. APPEND ONLY:
+// the save persists landmark ids as bit positions, so reordering these renames
+// the places she has already found.
+//
+// The Thunderpath is a hazard she is told to respect from the grass, and that
+// is the whole of it: nothing is hurt on it, on screen or in the text.
+
+export const LANDMARK_NAMES = [
+  'Fourtrees',
+  'Sunningrocks',
+  'the Thunderpath',
+] as const
+
+export const LANDMARK_ENTRIES = [
+  'Four great oaks in a ring.\nThe Clans meet here under a full moon.',
+  'Smooth stone, warm all afternoon.\nThe best napping in the whole forest.',
+  'Hard black stone that hums.\nMonsters race along it. Watch from the grass.',
+] as const
+
+/** The discovery toast: the name, then the entry underneath it. */
+export function landmarkToast(id: number): string {
+  return `You found ${LANDMARK_NAMES[id]}.\n${LANDMARK_ENTRIES[id]}`
+}

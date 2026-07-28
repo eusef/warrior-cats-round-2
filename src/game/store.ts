@@ -12,14 +12,18 @@ import {
   NEED_MAX,
   PELTS,
   SAVE_KEY,
+  TOAST_DURATION,
+  TOAST_DURATION_LONG,
 } from './constants'
 import {
   APPRENTICE_SUFFIX,
   NAME_PREFIXES,
   WARRIOR_SUFFIXES,
+  landmarkToast,
   nameToast,
 } from '../content/lines'
 import { live, resetLive } from './live'
+import { LANDMARK_ALL_MASK, isDiscovered, withDiscovered } from './landmarks'
 import { resetNeedEdges } from './needs'
 import { DEFAULT_SEED } from './rng'
 import { groundHeightAt } from './terrain'
@@ -32,6 +36,8 @@ export type Phase = 'title' | 'create' | 'playing'
 export interface Toast {
   id: number
   text: string
+  /** Seconds on screen. Carried per-toast so a discovery can outstay a catch. */
+  duration: number
 }
 
 /** An open warrior-name ceremony. Null the rest of the time. */
@@ -86,7 +92,7 @@ export function catName(id: Identity): string {
 }
 
 interface SaveBlob {
-  v: 1 | 2 | 3 | 4
+  v: 1 | 2 | 3 | 4 | 5
   health: number
   hunger: number
   huntCount: number
@@ -105,6 +111,10 @@ interface SaveBlob {
   // DAY_START_T and she wakes in the same mid-morning light a new cat gets,
   // rather than at whatever midnight a missing number would default to.
   tod?: number
+  // v5 only. A bitmask of discovered landmarks. Absent means a save from before
+  // there were any, so she arrives with all three still to find, which is the
+  // correct answer: she has genuinely never been to them.
+  found?: number
 }
 
 interface GameState {
@@ -115,6 +125,11 @@ interface GameState {
   seed: number
   /** Transient HUD message. Set on discrete events only. */
   toast: Toast | null
+
+  /** Bitmask of landmarks she has found. Bit position is the landmark id. */
+  discovered: number
+  /** Bumped on every discovery. AudioDriver watches this for its edge. */
+  discoverCount: number
 
   /** Pelt/eyes/name. Always present so the cat always has something to wear. */
   identity: Identity
@@ -132,7 +147,8 @@ interface GameState {
   addHunt: () => void
   promote: () => void
   endCeremony: () => void
-  showToast: (text: string) => void
+  discover: (id: number) => void
+  showToast: (text: string, duration?: number) => void
   clearToast: (id: number) => void
   setSeed: (n: number) => void
 
@@ -149,6 +165,8 @@ export const useGame = create<GameState>((set, get) => ({
   huntCount: 0,
   seed: DEFAULT_SEED,
   toast: null,
+  discovered: 0,
+  discoverCount: 0,
   identity: DEFAULT_IDENTITY,
   identityChosen: false,
   pendingCeremony: false,
@@ -222,9 +240,26 @@ export const useGame = create<GameState>((set, get) => ({
 
   endCeremony: () => set({ ceremony: null }),
 
-  showToast: (text) => {
+  showToast: (text, duration = TOAST_DURATION) => {
     toastId += 1
-    set({ toast: { id: toastId, text } })
+    set({ toast: { id: toastId, text, duration } })
+  },
+
+  // The one place a landmark is ever marked found. Guards against a repeat so
+  // the toast and the sting cannot double-fire on a frame boundary, then writes
+  // the save immediately: walking somewhere new is exactly the moment she is
+  // most likely to be interrupted, and the next timed save is up to ten seconds
+  // away. Fires last within the frame in PlayerCat, so a discovery landing on
+  // the same frame as a catch wins the (unqueued) toast slot.
+  discover: (id) => {
+    const s = get()
+    if (isDiscovered(s.discovered, id)) return
+    set({
+      discovered: withDiscovered(s.discovered, id),
+      discoverCount: s.discoverCount + 1,
+    })
+    get().showToast(landmarkToast(id), TOAST_DURATION_LONG)
+    get().save()
   },
 
   clearToast: (id) => {
@@ -240,7 +275,7 @@ export const useGame = create<GameState>((set, get) => ({
   save: () => {
     const id = get().identity
     const blob: SaveBlob = {
-      v: 4,
+      v: 5,
       health: live.health,
       hunger: live.hunger,
       huntCount: get().huntCount,
@@ -250,6 +285,7 @@ export const useGame = create<GameState>((set, get) => ({
       // From live, like the position and the needs above: Lighting advances the
       // clock every frame and never pushes it through the store.
       tod: live.timeOfDay,
+      found: get().discovered,
       // Written only once she has actually chosen, so a save made before the
       // Begin tap still routes her back into creation next time.
       ...(get().identityChosen
@@ -279,7 +315,11 @@ export const useGame = create<GameState>((set, get) => ({
     }
     // Widen this every time the version goes up. A version this does not name
     // is discarded, which silently throws away her whole game.
-    if (!blob || (blob.v !== 1 && blob.v !== 2 && blob.v !== 3 && blob.v !== 4)) return false
+    if (
+      !blob ||
+      (blob.v !== 1 && blob.v !== 2 && blob.v !== 3 && blob.v !== 4 && blob.v !== 5)
+    )
+      return false
 
     // A v1 blob (the build she has already played) keeps every bit of its
     // progress and simply arrives without a cat, which sends her through
@@ -309,7 +349,13 @@ export const useGame = create<GameState>((set, get) => ({
     // Wrapped rather than trusted: a hand-edited or drifted blob outside [0, 1)
     // would otherwise put the sun somewhere the palette never keys.
     live.timeOfDay = wrapTime(numOr(blob.tod, DAY_START_T))
-    set({ huntCount: Math.max(0, Math.floor(numOr(blob.huntCount, 0))) })
+    // Masked to the landmarks that actually exist: a hand-edited blob, or one
+    // written by a later build with a fourth landmark, would otherwise set a bit
+    // no entry exists for and `discoveredCount` would read 4 of 3.
+    set({
+      huntCount: Math.max(0, Math.floor(numOr(blob.huntCount, 0))),
+      discovered: Math.floor(numOr(blob.found, 0)) & LANDMARK_ALL_MASK,
+    })
     return true
   },
 
@@ -325,6 +371,11 @@ export const useGame = create<GameState>((set, get) => ({
     set({
       huntCount: 0,
       toast: null,
+      // Cleared, so a fresh cat rediscovers all three. discoverCount is not
+      // reset: it is only ever an edge source for audio, and rewinding it to 0
+      // would make the first discovery of the new game compare equal to the
+      // tracker and swallow its sting.
+      discovered: 0,
       identity: DEFAULT_IDENTITY,
       identityChosen: false,
       pendingCeremony: false,
