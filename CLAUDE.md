@@ -326,7 +326,7 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
    which are new voices and have never been through a device mix check.
    `DAY_LENGTH_SEC` at 180 is deliberately fast; `__game.setTime()` makes it a
    ten-second job to try 8 minutes instead.
-7. ~~**Named landmarks.**~~ **BUILT, needs the iPad check.** Three places, found
+7. ~~**Named landmarks. Done.** Three places, found
    by walking into them, each firing a one-shot three-line toast. **No panel, no
    journal button, no menu**, by deliberate choice: the HUD stays two bars and
    one button, and the entry is the reward rather than something to go and read.
@@ -379,11 +379,11 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
    viewport under browser chrome, so the vertical 14px is unverified and this is
    a slightly harsher test, not a laxer one. **Not verified: the iPad**, and the
    entry text has never been read at arm's length on a real screen.
-8. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
-9. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
-10. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
-11. **Multiplayer mode**. Where the players can see each other on the map and chase prey.
-12. **Cat Models**. Need to update the models to look like cats.
+8. **Prey variety (ignore for now).** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
+9. **A clanmate who follows and comments(ignore for now).** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
+10. **Photo mode(ignore for now).** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
+11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
+12. **Cat Models**(ignore for now). Need to update the models to look like cats.
 
 ## Commands
 
