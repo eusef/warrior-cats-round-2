@@ -1,4 +1,4 @@
-import { startMove, type Combatant } from '../game/duel'
+import { alongOf, lateralOf, startMove, type Combatant } from '../game/duel'
 import { logMove } from './duelLog'
 import { live, resetLive } from '../game/live'
 import {
@@ -256,6 +256,29 @@ export function installBridge() {
       rematchT: round2(live.duel.rematchT),
       lock: round2(live.duel.lock),
       camDist: round2(live.camera.dist),
+      // The fight line. `lateral` is the one to watch: it is the distance each
+      // cat is OFF the line, and the whole left-and-right-only claim is the
+      // assertion that both stay at 0 for the length of a fight.
+      // Named `line`, not `stage`: `stage` was already taken by the
+      // active/idle readout below and this is the fight line, not that.
+      onStage: live.duel.onStage,
+      camSide: live.duel.camSide,
+      line: {
+        ax: round3(live.duel.stage.ax),
+        az: round3(live.duel.stage.az),
+        cx: round2(live.duel.stage.cx),
+        cz: round2(live.duel.stage.cz),
+        neg: round2(live.duel.stage.neg),
+        pos: round2(live.duel.stage.pos),
+      },
+      along: {
+        player: round3(alongOf(live.cat.pos.x, live.cat.pos.z, live.duel.stage)),
+        rival: round3(alongOf(live.rival.pos.x, live.rival.pos.z, live.duel.stage)),
+      },
+      lateral: {
+        player: round3(lateralOf(live.cat.pos.x, live.cat.pos.z, live.duel.stage)),
+        rival: round3(lateralOf(live.rival.pos.x, live.rival.pos.z, live.duel.stage)),
+      },
       stage: useGame.getState().duelActive ? 'active' : 'idle',
       outcome: useGame.getState().duelOutcome,
       duelCount: useGame.getState().duelCount,
@@ -430,6 +453,10 @@ function forceOn(c: Combatant, move: string, who: 'player' | 'rival') {
 
 function round2(v: number) {
   return Math.round(v * 100) / 100
+}
+
+function round3(v: number) {
+  return Math.round(v * 1000) / 1000
 }
 
 function round4(v: number) {

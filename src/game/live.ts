@@ -5,11 +5,12 @@ import {
   CAT_START_HEALTH,
   CAT_START_HUNGER,
   DAY_START_T,
+  DUEL_ARENA_HALF,
   NEED_MAX,
   RIVAL_SPAWN,
   RIVAL_START_HEALTH,
 } from './constants'
-import { Combatant, makeCombatant, resetCombatant } from './duel'
+import { Combatant, Stage, makeCombatant, resetCombatant } from './duel'
 import { groundHeightAt } from './terrain'
 
 export type CatAction =
@@ -115,6 +116,38 @@ export const live = {
     rematchT: 0,
     /** 0..1 blend of the soft lock-on, eased so the camera never snaps. */
     lock: 0,
+
+    /**
+     * The fight line. Fixed by startDuel and never recomputed while the fight
+     * runs, which is the whole reason "left" keeps meaning the same direction
+     * on screen from the first frame to the last.
+     */
+    stage: {
+      ax: 0,
+      az: 1,
+      cx: 0,
+      cz: 0,
+      neg: -DUEL_ARENA_HALF,
+      pos: DUEL_ARENA_HALF,
+    } as Stage,
+    /**
+     * True while both cats are pinned to the line, and the single flag every
+     * consumer reads: movement, facing, the leash and the camera.
+     *
+     * Not the same thing as `active`. Tapping Run away clears this while the
+     * duel is still open, handing 3D movement and the follow camera straight
+     * back, because a leash you cannot slip is only fair if the exit is never
+     * leashed. Nothing should ever test `onStage && !fleeing`: the flee clears
+     * this itself, which is exactly so that no consumer has to remember to.
+     */
+    onStage: false,
+    /**
+     * Which side of the line the camera watches from, +1 or -1 along the
+     * perpendicular. Chosen at duel start as whichever side the camera is
+     * already on, so the fight opens without the world mirroring, and fixed
+     * afterwards so screen-left never swaps meaning mid-fight.
+     */
+    camSide: 1,
     /** Monotonic count of strikes that connected with nothing. An edge source
      *  for the whiff cue: a miss that makes no sound reads as a dead button. */
     whiffs: 0,
@@ -210,6 +243,7 @@ export function resetRival() {
   live.duel.endT = 0
   live.duel.rematchT = 0
   live.duel.lock = 0
+  live.duel.onStage = false
   // whiffs is deliberately not reset, for the same reason discoverCount is not:
   // rewinding it would make the next miss compare equal to the audio driver's
   // tracker and swallow the cue.

@@ -22,6 +22,7 @@ import {
   RIVAL_HOME_RADIUS,
   RIVAL_LIGHT_COLOR,
   RIVAL_MAIN_COLOR,
+  RIVAL_NOTICE_RADIUS,
   RIVAL_PREFERRED_GAP,
   RIVAL_REPOSITION_CHANCE,
   RIVAL_REPOSITION_TIME,
@@ -37,14 +38,18 @@ import {
 import {
   MOVES,
   advance,
+  alongOf,
   applyHit,
   duelPose,
   inReach,
   isLocked,
   pickCpuMove,
+  projectToStage,
+  separationPush,
   startMove,
   strikeDrive,
   type Drive,
+  type StagePoint,
 } from '../game/duel'
 import { live } from '../game/live'
 import { mulberry32 } from '../game/rng'
@@ -61,6 +66,7 @@ useGLTF.preload(MODEL_URL)
 
 // Hoisted. Nothing is allocated inside useFrame.
 const _drive: Drive = { speed: 0, hop: 0 }
+const _pt: StagePoint = { x: 0, z: 0, along: 0 }
 const _juice: JuiceContext = {
   action: 'idle',
   speed: 0,
@@ -192,6 +198,12 @@ export function RivalCat() {
     d.gap = gap
     // The Fight prompt only offers a fight that can actually start.
     d.inRange = !d.active && r.fleeT <= 0 && d.rematchT <= 0 && gap <= DUEL_PROMPT_RADIUS
+    // Standing her ground because Mila is walking up. See the branch below.
+    const noticing = !d.active && r.fleeT <= 0 && gap <= RIVAL_NOTICE_RADIUS
+    // Pinned to the fight line. PlayerCat lays the line out, one component
+    // earlier in the same frame, so this is never a frame behind, and it also
+    // clears the flag the frame Mila taps Run away.
+    const onStage = d.active && d.onStage
 
     // --- her half of the duel machine ---------------------------------------
     const ev = advance(r.duel, delta)
@@ -257,6 +269,14 @@ export function RivalCat() {
           top = RIVAL_APPROACH_SPEED
         }
       }
+    } else if (noticing) {
+      // --- noticed her --------------------------------------------------------
+      // She sees Mila coming and stands her ground. Without this she carries on
+      // ambling to her next wander target while Mila walks up, which reads as a
+      // cat who keeps running away from a fight rather than as one patrolling.
+      // Deliberately wider than DUEL_PROMPT_RADIUS so she has already stopped by
+      // the time the Fight button appears.
+      r.wanderT = 0
     } else if (!d.active) {
       // --- wander -----------------------------------------------------------
       r.wanderT -= delta
@@ -275,6 +295,18 @@ export function RivalCat() {
         wantZ = wz / wd
         top = RIVAL_WANDER_SPEED
       }
+    }
+
+    // Flatten her intent onto the line before the accel step, not after the
+    // fact with the position projection below. Her back-off-and-circle is
+    // mostly perpendicular, and letting the projection eat it afterwards would
+    // still feed the whole 3.4 m/s into r.speed: she would play a full run
+    // animation while actually sliding along the line at a third of that.
+    if (onStage) {
+      const s = d.stage
+      const alongWant = wantX * s.ax + wantZ * s.az
+      wantX = s.ax * alongWant
+      wantZ = s.az * alongWant
     }
 
     // A strike drives its own velocity and overrides everything above, exactly
@@ -310,6 +342,22 @@ export function RivalCat() {
     r.pos.x += r.vel.x * delta
     r.pos.z += r.vel.z * delta
     pushOutOfTrees(r.pos)
+    if (onStage) {
+      // The leash. She cannot circle off the line and she cannot back out of
+      // the stage, so the only way this fight ends early is Mila's own tap on
+      // Run away. Bias -1 against the player's +1, so if they ever land exactly
+      // on top of each other the two shoves pick opposite directions instead of
+      // welding them together.
+      const s = d.stage
+      const push = separationPush(
+        alongOf(r.pos.x, r.pos.z, s),
+        alongOf(cat.pos.x, cat.pos.z, s),
+        -1,
+      )
+      projectToStage(r.pos.x, r.pos.z, push, s, _pt)
+      r.pos.x = _pt.x
+      r.pos.z = _pt.z
+    }
     const limit = WORLD_HALF - WORLD_EDGE_MARGIN
     r.pos.x = clamp(r.pos.x, -limit, limit)
     r.pos.z = clamp(r.pos.z, -limit, limit)
@@ -317,8 +365,10 @@ export function RivalCat() {
 
     // --- facing -------------------------------------------------------------
     // In a duel she always squares up to the player, so her wind-up telegraphs
-    // where the hit is going. Out of one she just faces where she is walking.
-    if (d.active && r.duel.phase !== 'strike') {
+    // where the hit is going. She also turns to face Mila walking up, because a
+    // cat that stops but keeps staring at a bush does not read as "noticed you".
+    // Out of both she just faces where she is walking.
+    if ((d.active || noticing) && r.duel.phase !== 'strike') {
       const want = Math.atan2(-dx, -dz)
       r.yaw += shortestAngle(r.yaw, want) * Math.min(1, RIVAL_TURN_SPEED * delta)
     } else if (r.speed > 0.05 && r.duel.phase !== 'strike') {

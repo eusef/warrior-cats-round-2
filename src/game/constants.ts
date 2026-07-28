@@ -588,7 +588,6 @@ export const POUNCE: Move = { windup: 0.7, strike: 0.22, reach: 3.0, damage: 16,
 export const JUMPKICK: Move = { windup: 1.2, strike: 0.3, reach: 4.5, damage: 30, recovery: 0.7, lunge: 3.0, hop: 1.15 }
 
 export const DUEL_PROMPT_RADIUS = 4 // metres; the Fight button appears inside this
-export const DUEL_CAM_DISTANCE = 6 // metres the camera pulls back to in a duel
 export const FLEE_DISTANCE = 15 // metres from the rival at which a flee closes the duel
 export const FLEE_SPEED_BONUS = 1.3 // multiplies top speed while running away
 
@@ -600,6 +599,11 @@ export const DUEL_STAGGER_DURATION = 0.45
 export const DUEL_HIT_ARC = 1.0
 /** Reach is measured centre-to-centre, so both bodies get counted once. */
 export const DUEL_BODY_RADIUS = 0.35
+/** Metres centre-to-centre the two cats are held apart on the fight line. They
+ *  block each other rather than overlapping: from a side-on camera two cats in
+ *  the same spot is the most obvious thing on screen. A lunge that would have
+ *  carried through now stops on contact. */
+export const DUEL_MIN_SEPARATION = 0.8
 /** Seconds the hit-react clip plays on whoever just took damage. */
 export const DUEL_HIT_FLINCH = 0.32
 /** Seconds of yield beat after a health bar empties, before the duel closes. */
@@ -610,13 +614,56 @@ export const DUEL_LOSS_HEALTH_FLOOR = 35
 /** Seconds after a duel ends before the rival can be challenged again. */
 export const DUEL_REMATCH_DELAY = 6
 
-// Soft lock-on. The follow camera is extended, never replaced: it leans its
-// look point toward the midpoint and opens the dolly with the gap so a
-// jump-kick approach is readable. It never takes the thumb's yaw away.
-export const DUEL_CAM_LOOK_BLEND = 0.38 // 0 = all player, 1 = all rival
-export const DUEL_CAM_GAP_DOLLY = 0.3 // extra metres of pull-back per metre of gap
-export const DUEL_CAM_MAX_DISTANCE = 9 // ceiling on the duel dolly
-export const DUEL_CAM_LOCK_LAG = 3.2 // per second, how fast lock-on fades in and out
+// How fast the camera hands over between the follow rig and the ringside rig,
+// per second. It is a blend and not a cut in either direction, so this is the
+// only thing standing between the two and there is nothing else to tune.
+//
+// This used to drive a soft lock-on that stayed behind the cat and just leaned
+// its aim toward the rival. That is gone: DUEL_CAM_LOOK_BLEND, DUEL_CAM_DISTANCE,
+// DUEL_CAM_GAP_DOLLY and DUEL_CAM_MAX_DISTANCE went with it. A fight on a fixed
+// line wants a fixed side-on view, and half-leaning a chase camera at it was
+// strictly worse than either.
+export const DUEL_CAM_LOCK_LAG = 3.2
+
+// ---------------------------------------------------------------------------
+// The fighting stage
+// ---------------------------------------------------------------------------
+// A duel runs on a line, not on a field. The axis is fixed when the fight opens
+// and both cats are projected onto it every frame, which is simultaneously the
+// left/right-only control scheme, the leash that stops either cat leaving, and
+// the reason the side-on camera can be a fixed rig rather than a chase.
+
+/** Metres each way from the stage centre. The full stage is twice this. */
+export const DUEL_ARENA_HALF = 7
+/** Floor on each half when trees or the world edge crowd the line. A small
+ *  stage is playable; a stage the width of a cat is not, so this wins over a
+ *  trunk and she clips it in the rare case rather than fighting in a corridor. */
+export const DUEL_ARENA_MIN_HALF = 3.5
+/** Clearance a trunk needs from the line before it stops blocking it. Body
+ *  radius plus a little, so a cat never visibly grazes a tree she is pinned to. */
+export const DUEL_ARENA_TREE_CLEARANCE = 0.55
+
+/**
+ * Metres perpendicular to the fight line that the camera sits back, at zero gap.
+ *
+ * Close to CAM_DISTANCE on purpose: these cats are 0.8m long and 0.35m tall, so
+ * a camera parked far enough back to hold a 6m jump-kick at all times leaves
+ * them as two specks in a field. Almost all of the framing is therefore in the
+ * gap dolly rather than in this number, and the view is tight when they are
+ * trading and wide only while somebody is closing.
+ */
+export const DUEL_CAM_SIDE_DISTANCE = 3.6
+/** Extra metres of pull-back per metre of gap. Nearly 1:1, which is what keeps
+ *  the pair at roughly a constant size on screen however far apart they are. */
+export const DUEL_CAM_SIDE_GAP_DOLLY = 0.95
+export const DUEL_CAM_SIDE_MAX_DISTANCE = 9.5
+/** Metres above the cats' feet the camera eye sits. Low, so it reads as ringside
+ *  rather than as a map view. */
+export const DUEL_CAM_SIDE_HEIGHT = 1.35
+/** Metres above the feet the camera aims at, measured at the midpoint. Below
+ *  the eye height, so the view tilts down slightly; raising it pushes both cats
+ *  toward the bottom of the screen. */
+export const DUEL_CAM_SIDE_LOOK_HEIGHT = 0.35
 
 // The rival. One wandering cat, spawned away from camp and away from every
 // landmark so walking into her is its own small event.
@@ -647,6 +694,11 @@ export const RIVAL_WEIGHT_POUNCE = 0.35
 export const RIVAL_WEIGHT_JUMPKICK = 0.15
 export const RIVAL_FLEE_SPEED = 6.2 // m/s while yielding and running off
 export const RIVAL_FLEE_TIME = 3.5 // seconds of running before she despawns
+/** Metres at which she notices Mila coming and stops wandering to face her.
+ *  Wider than DUEL_PROMPT_RADIUS on purpose: she has to be standing still by
+ *  the time the Fight button appears, or walking up to her reads as chasing
+ *  a cat who keeps leaving. */
+export const RIVAL_NOTICE_RADIUS = 6
 
 /** She is always a different cat from Mila's, whatever pelt Mila picked, so the
  *  two are never confusable mid-fight. Not a PELTS index for exactly that reason. */

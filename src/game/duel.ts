@@ -1,7 +1,11 @@
 import {
+  DUEL_ARENA_HALF,
+  DUEL_ARENA_MIN_HALF,
+  DUEL_ARENA_TREE_CLEARANCE,
   DUEL_BODY_RADIUS,
   DUEL_HIT_ARC,
   DUEL_HIT_FLINCH,
+  DUEL_MIN_SEPARATION,
   DUEL_STAGGER_DURATION,
   JUMPKICK,
   Move,
@@ -271,6 +275,188 @@ export function applyHit(target: Combatant, health: number, damage: number): {
  * `rand` is passed in rather than called, so a seeded generator makes the whole
  * fight reproducible under __game.step().
  */
+// ---------------------------------------------------------------------------
+// The fighting stage
+// ---------------------------------------------------------------------------
+
+/**
+ * A duel runs on a line, fixed when the fight opens and never recomputed.
+ *
+ * `(ax, az)` is a horizontal unit vector, `(cx, cz)` the centre, and `neg`/`pos`
+ * are how far along the axis the stage extends each way. Everything about the
+ * Mortal-Kombat feel falls out of projecting both cats onto this every frame:
+ * it IS the left/right-only control scheme, it IS the leash that stops either
+ * cat leaving, and it is what lets the camera be a fixed side-on rig rather
+ * than a chase.
+ *
+ * `neg` is negative and `pos` is positive. They are not symmetric: a tree or
+ * the world edge trims one side without touching the other.
+ */
+export interface Stage {
+  ax: number
+  az: number
+  cx: number
+  cz: number
+  neg: number
+  pos: number
+}
+
+/** Anything that stops the line. Structurally a tree collider. */
+export interface LineBlocker {
+  x: number
+  z: number
+  r: number
+}
+
+/** Signed distance along the axis from the stage centre. */
+export function alongOf(x: number, z: number, s: Stage): number {
+  return (x - s.cx) * s.ax + (z - s.cz) * s.az
+}
+
+/**
+ * Signed distance from the line, positive on the left of the axis. Nothing in
+ * the game reads this: it exists so verification can assert that a cat in a
+ * duel is ON the line rather than eyeballing it in a screenshot.
+ */
+export function lateralOf(x: number, z: number, s: Stage): number {
+  return (x - s.cx) * -s.az + (z - s.cz) * s.ax
+}
+
+export interface StagePoint {
+  x: number
+  z: number
+  along: number
+}
+
+/**
+ * Put a position on the line and inside the stage. This is the single rule that
+ * removes lateral drift, the rival's circling, the player's forward and back,
+ * and any push-out a tree applied on the way. Deliberately runs AFTER the tree
+ * push-out rather than instead of it, so the push-out still separates the cats
+ * from trunks near the line before the projection flattens what is left.
+ *
+ * `push` is the body-separation slide from separationPush, applied before the
+ * clamp so that being shoved never puts a cat outside the stage.
+ */
+export function projectToStage(
+  x: number,
+  z: number,
+  push: number,
+  s: Stage,
+  out: StagePoint,
+): StagePoint {
+  let along = alongOf(x, z, s) + push
+  if (along < s.neg) along = s.neg
+  else if (along > s.pos) along = s.pos
+  out.along = along
+  out.x = s.cx + s.ax * along
+  out.z = s.cz + s.az * along
+  return out
+}
+
+/**
+ * How far this cat has to slide to stop standing inside the other one.
+ *
+ * HALF the overlap, not all of it: the other cat runs the same rule against
+ * this one in the same frame, so the two corrections add up to exactly the
+ * overlap and neither has to know where the other is going to end up. When one
+ * of them is pinned against the end of the stage the other only gets its half,
+ * and the remainder converges geometrically over the next few frames, which
+ * reads as a shove rather than as a wall.
+ *
+ * `bias` breaks the tie when they are exactly coincident and there is no
+ * direction to push in. +1 for the player, -1 for the rival, so the two never
+ * pick the same way and stay welded together.
+ */
+export function separationPush(mine: number, theirs: number, bias: number): number {
+  const d = mine - theirs
+  const dist = Math.abs(d)
+  if (dist >= DUEL_MIN_SEPARATION) return 0
+  const dir = dist < 1e-4 ? bias : Math.sign(d)
+  return dir * (DUEL_MIN_SEPARATION - dist) * 0.5
+}
+
+/**
+ * How far the stage can extend each way from its centre before it runs into a
+ * tree or off the edge of the world. Computed once when a duel opens.
+ *
+ * Trimming is not cosmetic. Projecting onto a line that a trunk sits on would
+ * slide a cat straight through it every frame, and from a side-on camera that
+ * is the most obvious bug on screen. A trunk within `DUEL_ARENA_TREE_CLEARANCE`
+ * of the line blocks a span of it, and the stage stops just short.
+ *
+ * Two deliberate overrides, in this order. A stage trimmed below
+ * DUEL_ARENA_MIN_HALF is opened back up to it, because a corridor the width of
+ * a cat is unplayable and a trunk clipped once in a thicket is the cheaper
+ * failure. The world edge then wins outright, because walking off the terrain
+ * is not a cheaper failure than anything.
+ *
+ * There is a third case that is NOT handled, and it is the one to know about: a
+ * trunk whose blocked span covers the stage centre is skipped entirely. The
+ * cats' own push-out cannot rule this out, because the centre is the MIDPOINT
+ * between them and two cats 2.6m apart can straddle a trunk while both sit
+ * clear of it. Excluding it properly would mean sliding the centre off the
+ * trunk, which can then push the far cat outside the trimmed span and yank her.
+ * Measured over 60 stages placed across the map: 10 were trimmed by a tree, and
+ * the worst trunk left standing on a stage cleared the line by 0.07m -- close
+ * enough for a cat's flank to pass through it for a step. It is cosmetic, it is
+ * rare, and it is cheaper than the yank.
+ *
+ * Pure over a plain array, so it is assertable against a synthetic list of
+ * blockers with no scene, no frame and no cat.
+ */
+export function arenaSpan(
+  cx: number,
+  cz: number,
+  ax: number,
+  az: number,
+  blockers: readonly LineBlocker[],
+  worldLimit: number,
+): { neg: number; pos: number } {
+  let neg = -DUEL_ARENA_HALF
+  let pos = DUEL_ARENA_HALF
+
+  for (let i = 0; i < blockers.length; i++) {
+    const b = blockers[i]
+    const dx = b.x - cx
+    const dz = b.z - cz
+    const R = b.r + DUEL_ARENA_TREE_CLEARANCE
+    // Perpendicular distance from the line. Outside R it cannot block anything.
+    const perp = dx * -az + dz * ax
+    if (perp > R || perp < -R) continue
+    const proj = dx * ax + dz * az
+    const half = Math.sqrt(Math.max(0, R * R - perp * perp))
+    const lo = proj - half
+    const hi = proj + half
+    // Straddling the centre. Trimming to either side would exclude the centre
+    // itself and hand back an inverted span, so this trunk is skipped and lives
+    // inside the stage. See the note in the doc comment: it is the one gap in
+    // the guarantee and it is deliberate.
+    if (lo <= 0 && hi >= 0) continue
+    if (proj > 0) {
+      if (lo < pos) pos = lo
+    } else if (hi > neg) {
+      neg = hi
+    }
+  }
+
+  if (pos < DUEL_ARENA_MIN_HALF) pos = DUEL_ARENA_MIN_HALF
+  if (neg > -DUEL_ARENA_MIN_HALF) neg = -DUEL_ARENA_MIN_HALF
+
+  // The world edge, applied last and never overridden. Solving each axis
+  // separately and taking the tighter answer is exact for an axis-aligned box.
+  pos = Math.min(pos, boxLimit(cx, ax, worldLimit), boxLimit(cz, az, worldLimit))
+  neg = Math.max(neg, -boxLimit(cx, -ax, worldLimit), -boxLimit(cz, -az, worldLimit))
+  return { neg, pos }
+}
+
+/** How far `c + d*t` can travel before |value| leaves `limit`. */
+function boxLimit(c: number, d: number, limit: number): number {
+  if (d > 1e-6) return (limit - c) / d
+  if (d < -1e-6) return (-limit - c) / d
+  return Infinity
+}
+
 export function pickCpuMove(gap: number, rand: () => number): MoveId | null {
   const weights: [MoveId, number][] = [
     ['swipe', RIVAL_WEIGHT_SWIPE],

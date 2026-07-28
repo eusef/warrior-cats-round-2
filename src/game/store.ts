@@ -292,6 +292,10 @@ export const useGame = create<GameState>((set, get) => ({
     resetCombatant(live.rival.duel)
     live.duel.active = true
     live.duel.fleeing = false
+    // The stage geometry is laid out one call later, by PlayerCat, because it
+    // needs the tree list and this file cannot reach the world without a cycle.
+    // See openStage in game/arena.ts.
+    live.duel.onStage = false
     live.duel.endT = 0
     live.rival.decideT = 0
     live.rival.repositionT = 0
@@ -314,6 +318,7 @@ export const useGame = create<GameState>((set, get) => ({
     if (!live.duel.active) return
     live.duel.active = false
     live.duel.fleeing = false
+    live.duel.onStage = false
     live.duel.endT = 0
     live.duel.lock = 0
     live.duel.rematchT = DUEL_REMATCH_DELAY

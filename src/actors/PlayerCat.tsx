@@ -32,15 +32,20 @@ import {
 import {
   MOVES,
   advance,
+  alongOf,
   applyHit,
   duelPose,
   inReach,
   isLocked,
+  projectToStage,
   resetCombatant,
+  separationPush,
   startMove,
   strikeDrive,
   type Drive,
+  type StagePoint,
 } from '../game/duel'
+import { openStage } from '../game/arena'
 import { undiscoveredHit } from '../game/landmarks'
 import { live, resetLive } from '../game/live'
 import { feed, tickNeeds } from '../game/needs'
@@ -62,6 +67,7 @@ useGLTF.preload(MODEL_URL)
 const _dir = new THREE.Vector2()
 const _desired = new THREE.Vector2()
 const _drive: Drive = { speed: 0, hop: 0 }
+const _pt: StagePoint = { x: 0, z: 0, along: 0 }
 const _juice: JuiceContext = {
   action: 'idle',
   speed: 0,
@@ -197,6 +203,14 @@ export function PlayerCat() {
           useGame.getState().endDuel('fled')
         } else {
           duel.fleeing = true
+          // Down comes the leash, on the same line that raises the flee. Running
+          // away has to actually mean running away: 3D movement, the follow
+          // camera, and enough room to reach FLEE_DISTANCE. Clearing it here and
+          // nowhere else is what keeps `onStage` meaning exactly one thing --
+          // the constraint is in force -- so no consumer has to remember to
+          // check `fleeing` as well, and the camera does not stay ringside
+          // filming an empty stage.
+          duel.onStage = false
         }
       }
     }
@@ -205,6 +219,18 @@ export function PlayerCat() {
       input.fightTap = false
       if (playing && duel.inRange) useGame.getState().startDuel()
     }
+
+    // Lay the fight line out on the first frame of a fight. Here rather than in
+    // startDuel because the span has to be trimmed around trunks and this is
+    // the module that owns the tree list; see openStage. Guarded on `onStage`,
+    // which is also what every consumer below reads, so there is no separate
+    // "already built" flag to fall out of step.
+    // `!duel.fleeing` is load-bearing here and only here: without it a fight she
+    // is running out of would re-open its stage on the very next frame.
+    if (playing && duel.active && !duel.onStage && !duel.fleeing) openStage()
+
+    // Both cats are pinned to the line while this is true.
+    const onStage = playing && duel.active && duel.onStage
 
     if (input.duelMove) {
       const wanted = input.duelMove
@@ -259,18 +285,37 @@ export function PlayerCat() {
     }
 
     // --- movement -----------------------------------------------------------
-    const camYaw = live.camera.yaw
-    const fx = -Math.sin(camYaw)
-    const fz = -Math.cos(camYaw)
-    const rx = Math.cos(camYaw)
-    const rz = -Math.sin(camYaw)
+    let wantMag = 0
+    if (onStage) {
+      // Left and right, and nothing else. The joystick's forward axis is
+      // dropped on the floor rather than projected onto the line: folding it in
+      // would mean a thumb pushed straight up still crept toward the rival,
+      // which is exactly the 3D control the fight is supposed to have taken
+      // away.
+      //
+      // camSide is what makes screen-right mean screen-right. With the camera
+      // out on the perpendicular looking back at the line, its right-hand basis
+      // vector works out to exactly camSide * (ax, az), so this needs no
+      // trigonometry and cannot drift out of step with where the camera is.
+      const s = duel.stage
+      const sx = input.move.x * duel.camSide
+      wantMag = playing && !busy ? Math.min(Math.abs(sx), 1) : 0
+      const sgn = sx < 0 ? -1 : 1
+      _dir.set(s.ax * sgn, s.az * sgn)
+    } else {
+      const camYaw = live.camera.yaw
+      const fx = -Math.sin(camYaw)
+      const fz = -Math.cos(camYaw)
+      const rx = Math.cos(camYaw)
+      const rz = -Math.sin(camYaw)
 
-    _dir.set(
-      rx * input.move.x + fx * input.move.y,
-      rz * input.move.x + fz * input.move.y,
-    )
-    const wantMag = playing && !busy ? Math.min(_dir.length(), 1) : 0
-    if (wantMag > 0.0001) _dir.multiplyScalar(1 / _dir.length())
+      _dir.set(
+        rx * input.move.x + fx * input.move.y,
+        rz * input.move.x + fz * input.move.y,
+      )
+      wantMag = playing && !busy ? Math.min(_dir.length(), 1) : 0
+      if (wantMag > 0.0001) _dir.multiplyScalar(1 / _dir.length())
+    }
 
     if (locked) {
       // Committed. Wind-up, recovery and stagger are all dead stops -- this is
@@ -361,6 +406,20 @@ export function PlayerCat() {
 
     pushOutOfTrees(cat.pos)
 
+    if (onStage) {
+      // Back onto the line, shoved clear of the rival, and clamped inside the
+      // stage. One call does the lot, and it runs after the tree push-out so a
+      // trunk still separates her before the line flattens what is left.
+      const s = duel.stage
+      const r = live.rival
+      const push = r.active
+        ? separationPush(alongOf(cat.pos.x, cat.pos.z, s), alongOf(r.pos.x, r.pos.z, s), 1)
+        : 0
+      projectToStage(cat.pos.x, cat.pos.z, push, s, _pt)
+      cat.pos.x = _pt.x
+      cat.pos.z = _pt.z
+    }
+
     const limit = WORLD_HALF - WORLD_EDGE_MARGIN
     cat.pos.x = clamp(cat.pos.x, -limit, limit)
     cat.pos.z = clamp(cat.pos.z, -limit, limit)
@@ -369,7 +428,13 @@ export function PlayerCat() {
     // --- facing -------------------------------------------------------------
     // A committed move locks the heading, same as the hunting pounce: the whole
     // point of the wind-up is that she has already chosen where the hit goes.
-    if (cat.speed > 0.05 && cat.pounceT <= 0 && !locked) {
+    if (onStage && live.rival.active && !locked && cat.pounceT <= 0) {
+      // On the line she always squares up, whichever way she is walking. This is
+      // the same rule the rival has always followed, and it is what makes
+      // backing away from a wind-up a retreat rather than a turn-and-run.
+      const want = Math.atan2(cat.pos.x - live.rival.pos.x, cat.pos.z - live.rival.pos.z)
+      cat.yaw += shortestAngle(cat.yaw, want) * Math.min(1, CAT_TURN_SPEED * delta)
+    } else if (cat.speed > 0.05 && cat.pounceT <= 0 && !locked) {
       const want = Math.atan2(-cat.vel.x, -cat.vel.z)
       cat.yaw += shortestAngle(cat.yaw, want) * Math.min(1, CAT_TURN_SPEED * delta)
     }
