@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { HUNGER_LOW_THRESHOLD, NEED_MAX, TOAST_DURATION } from '../game/constants'
+import { HUNGER_LOW_THRESHOLD, NEED_MAX } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import { input, useTouchInput } from '../input/useTouchInput'
@@ -186,7 +186,7 @@ function Toast() {
 
   useEffect(() => {
     if (!toast) return
-    const id = window.setTimeout(() => clearToast(toast.id), TOAST_DURATION * 1000)
+    const id = window.setTimeout(() => clearToast(toast.id), toast.duration * 1000)
     return () => window.clearTimeout(id)
   }, [toast, clearToast])
 
@@ -208,12 +208,16 @@ function Toast() {
         // 16px/400.
         fontSize: 20,
         fontWeight: 600,
-        lineHeight: 1,
+        lineHeight: 1.32,
         letterSpacing: '0.01em',
+        textAlign: 'center',
         pointerEvents: 'none',
         zIndex: 40,
         animation: 'none',
-        whiteSpace: 'nowrap',
+        // pre-line, not nowrap: a landmark toast carries a name and two lines of
+        // journal entry separated by \n. Every other toast is a single line with
+        // no newline in it, so none of them wrap or change shape.
+        whiteSpace: 'pre-line',
       }}
     >
       {toast.text}

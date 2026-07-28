@@ -9,6 +9,7 @@ import {
   TREE_MIN_SCALE,
   WORLD_HALF,
 } from '../game/constants'
+import { insideAnyKeepOut } from '../game/landmarks'
 import { distToCamp, groundHeightAt } from '../game/terrain'
 import { mulberry32 } from '../game/rng'
 import { useGame } from '../game/store'
@@ -70,7 +71,7 @@ const _color = new THREE.Color()
  * trunks, canopies, ferns and rocks all share it. That is 1 material instead of
  * 4 against the 15-material budget; draw calls are unaffected.
  */
-const foliageMaterial = new THREE.MeshLambertMaterial({ vertexColors: false })
+export const foliageMaterial = new THREE.MeshLambertMaterial({ vertexColors: false })
 
 interface FieldProps {
   placements: Placement[]
@@ -139,10 +140,20 @@ export function Foliage() {
     const f = placeField(rand, FERN_COUNT, 0.6, 1.4, FOLIAGE_CLEARING_RADIUS * 0.55)
     const r = placeField(rand, ROCK_COUNT, 0.5, 1.7, FOLIAGE_CLEARING_RADIUS * 0.7)
 
-    treeColliders.length = 0
-    for (const p of t) treeColliders.push({ x: p.x, z: p.z, r: 0.45 * p.scale })
+    // Landmark keep-out is applied AFTER placement, not as another `continue`
+    // inside placeField. Rejection sampling burns a rand() per attempt, so
+    // rejecting there would shift the stream and reshuffle her entire existing
+    // forest; filtering here consumes exactly the same draws and only removes
+    // the handful of plants standing where a landmark now is.
+    const clear = (list: Placement[]) => list.filter((p) => !insideAnyKeepOut(p.x, p.z))
+    const tk = clear(t)
+    const fk = clear(f)
+    const rk = clear(r)
 
-    return { trees: t, ferns: f, rocks: r }
+    treeColliders.length = 0
+    for (const p of tk) treeColliders.push({ x: p.x, z: p.z, r: 0.45 * p.scale })
+
+    return { trees: tk, ferns: fk, rocks: rk }
   }, [seed])
 
   // Geometry is shared across every instance, built once for the lifetime of the app.

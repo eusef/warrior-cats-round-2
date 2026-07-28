@@ -63,6 +63,7 @@ export function AudioDriver() {
     eatT: 0,
     hunger: 100,
     ceremonyId: -1,
+    discoverCount: 0,
     pelt: -1,
     eyes: -1,
     prefix: -1,
@@ -108,6 +109,12 @@ export function AudioDriver() {
 
     const cid = g.ceremony ? g.ceremony.id : -1
     if (cid !== -1 && cid !== t.ceremonyId) playCeremony()
+
+    // Finding a place reuses the ceremony sting rather than adding a fourth
+    // synth voice. It is the same "something good just happened" beat, and it is
+    // the only cue in the game already approved by ear on the device; the
+    // crickets and the owl are still unheard there.
+    if (g.discoverCount !== t.discoverCount) playCeremony()
 
     // A hungry cat asks. Same threshold the HUD turns urgent at.
     if (playing && live.hunger <= HUNGER_LOW_THRESHOLD && t.hunger > HUNGER_LOW_THRESHOLD) {
@@ -202,6 +209,7 @@ type Tracked = {
   eatT: number
   hunger: number
   ceremonyId: number
+  discoverCount: number
   pelt: number
   eyes: number
   prefix: number
@@ -213,6 +221,7 @@ function sync(t: Tracked, g: ReturnType<typeof useGame.getState>) {
   t.eatT = live.cat.eatT
   t.hunger = live.hunger
   t.ceremonyId = g.ceremony ? g.ceremony.id : -1
+  t.discoverCount = g.discoverCount
   t.pelt = g.identity.pelt
   t.eyes = g.identity.eyes
   t.prefix = g.identity.prefix

@@ -326,7 +326,59 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
    which are new voices and have never been through a device mix check.
    `DAY_LENGTH_SEC` at 180 is deliberately fast; `__game.setTime()` makes it a
    ten-second job to try 8 minutes instead.
-7. **Named landmarks.** Fourtrees, Sunningrocks, the Thunderpath. First visit unlocks a journal entry. Turns wandering into discovery.
+7. ~~**Named landmarks.**~~ **BUILT, needs the iPad check.** Three places, found
+   by walking into them, each firing a one-shot three-line toast. **No panel, no
+   journal button, no menu**, by deliberate choice: the HUD stays two bars and
+   one button, and the entry is the reward rather than something to go and read.
+   `src/game/landmarks.ts` is the whole rule as pure functions with no R3F and no
+   store import, so discovery is assertable headlessly; `src/world/Landmarks.tsx`
+   only draws. Names and entries are hand-written in `lines.ts` as usual.
+
+   **Five things that will bite whoever touches this next.**
+
+   **The Thunderpath's trigger is a band on z, not a circle.** It spans the whole
+   world on x, so a circle at its midpoint fires nothing if she reaches the road
+   out at x = -70, which is most of its length. `LandmarkShape` exists solely for
+   this. Verified firing at x = -88, -20, 0, 45 and 88, and never at 12m off.
+
+   **Foliage keep-out is a post-filter, not another `continue` in `placeField`.**
+   Rejection sampling burns a `rand()` per attempt, so rejecting inside the loop
+   shifts the stream and **reshuffles her entire existing forest**. Filtering
+   after placement consumes identical draws. Counts went 190/260/55 →
+   160/228/48 with zero plants left inside a landmark.
+
+   **Everything reuses `foliageMaterial`, so this cost ZERO new materials.**
+   Still 17. That material colours per instance via `instanceColor`, not a
+   uniform, which is why even the single road quad is an `InstancedMesh` of one:
+   a plain `<mesh>` renders it untinted white. Do not "simplify" it to a mesh.
+
+   **The great oaks push into `treeColliders`, and Foliage clears that list on
+   every seed change.** `Landmarks` therefore depends on `seed` purely to
+   re-push; without it `__game.seed(n)` silently lets her walk through the ring.
+   Confirmed still solid after a reseed to 99 and back.
+
+   **Save is v5 (`found`, a bitmask).** Bit position is the landmark id, so
+   `LANDMARKS`, `LANDMARK_NAMES` and `LANDMARK_ENTRIES` are **append-only**, the
+   same rule as `NAME_PREFIXES`. The loaded mask is `&`-ed with
+   `LANDMARK_ALL_MASK` so a junk blob cannot report 4 of 3.
+
+   The toast now carries its own duration (`TOAST_DURATION_LONG = 5.2`) and is
+   `whiteSpace: 'pre-line'`; 1.8s is not enough to read three lines. Discovery is
+   written **last** in PlayerCat's frame so it wins the unqueued toast slot
+   against a catch. The sting reuses `playCeremony()` rather than adding a fourth
+   synth voice, since it is the only cue already approved by ear on the device.
+
+   Verified in Chrome at 1180x806, dpr 2: discovery fires inside and not at
+   12.5m out, once only, on a real joystick walk-in as well as a teleport; band
+   fires along the whole road; v5 round-trip plus v1/v2/v3/v4 migration (all
+   arriving with nothing found and hunts intact), v9 rejected, junk `0xff`
+   masked to 7; oaks solid at 1.52m; the road a constant 0.06m above ground at
+   every sampled vertex across its 190m span; 17 materials, 14-18 draw calls,
+   40.7k-46.6k triangles; title → create → play unbroken; zero console errors.
+   **Viewport was 806px tall, not 820** — a 982px screen cannot host an 820px
+   viewport under browser chrome, so the vertical 14px is unverified and this is
+   a slightly harsher test, not a laxer one. **Not verified: the iPad**, and the
+   entry text has never been read at arm's length on a real screen.
 8. **Prey variety.** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
 9. **A clanmate who follows and comments.** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
 10. **Photo mode.** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.

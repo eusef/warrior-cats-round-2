@@ -4,6 +4,7 @@ import { HUNTS_TO_WARRIOR } from '../game/constants'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import { clockString, phaseName } from '../world/daylight'
+import { LANDMARKS, discoveredCount, isDiscovered, landmarkDistance } from '../game/landmarks'
 import { attachSceneToBridge, attachStepToBridge, DEBUG } from './expose'
 import { audioDiagnostics } from '../audio/engine'
 
@@ -58,6 +59,22 @@ export function DebugSampler() {
   return null
 }
 
+/** "next Fourtrees 41.2/11", or "all found". */
+function nearestUnfound(mask: number): string {
+  let best: (typeof LANDMARKS)[number] | null = null
+  let bestD = Infinity
+  for (const l of LANDMARKS) {
+    if (isDiscovered(mask, l.id)) continue
+    const d = landmarkDistance(l, live.cat.pos.x, live.cat.pos.z)
+    if (d < bestD) {
+      bestD = d
+      best = l
+    }
+  }
+  if (!best) return 'all found'
+  return `next ${best.name} ${bestD.toFixed(1)}/${best.trigger}`
+}
+
 export function DebugOverlay() {
   const ref = useRef<HTMLPreElement>(null)
 
@@ -88,6 +105,9 @@ export function DebugOverlay() {
         `  sun ${live.sunElev.toFixed(0).padStart(3)}  night ${live.night.toFixed(2)}\n` +
         `hunts    ${g.huntCount}/${HUNTS_TO_WARRIOR}${g.identity.warrior ? ' warrior' : ''}` +
         `   seed ${g.seed}\n` +
+        // Distance to the nearest UNfound landmark, so walking toward one shows
+        // the number falling to its trigger. Reads "all found" once done.
+        `places   ${discoveredCount(g.discovered)}/${LANDMARKS.length}  ${nearestUnfound(g.discovered)}\n` +
         // Three numbers that tell the three iOS failure modes apart. state
         // not running = the gesture never unlocked it. cues 0 = the driver is
         // not firing. Both fine but lvl 0 = nothing reaches the master bus.

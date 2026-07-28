@@ -5,6 +5,7 @@ import { CAM_FAR, CAM_FOV, CAM_NEAR } from './game/constants'
 import { useGame } from './game/store'
 import { Terrain, WorldSkirt } from './world/Terrain'
 import { Foliage } from './world/Foliage'
+import { Landmarks } from './world/Landmarks'
 import { Camp } from './world/Camp'
 import { Fireflies } from './world/Fireflies'
 import { Lighting } from './world/Lighting'
@@ -38,6 +39,7 @@ export function App() {
           <Terrain />
           <WorldSkirt />
           <Foliage />
+        <Landmarks />
           <Camp />
           <Fireflies />
           {/* PlayerCat must mount before Prey: R3F runs useFrame in subscription

@@ -21,6 +21,7 @@ import {
 } from '../audio/engine'
 import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
+import { LANDMARKS, discoveredCount, isDiscovered, landmarkDistance } from '../game/landmarks'
 import { DAY_LENGTH_SEC, HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
 import { clockString, phaseName, wrapTime } from '../world/daylight'
 import { input, setActionHeld } from '../input/useTouchInput'
@@ -85,6 +86,16 @@ export interface GameBridge {
    * sitting through three minutes of wall clock per pass. Values outside the
    * range wrap rather than throw, so `setTime(-0.1)` is late evening.
    */
+  /** Every landmark with its live distance, so discovery is asserted not guessed. */
+  landmarks: () => Array<{
+    id: number
+    name: string
+    found: boolean
+    dist: number
+    trigger: number
+  }>
+  /** Marks one found without walking there, for save round-trip checks. */
+  discover: (id: number) => void
   setTime: (t: number) => void
   /** The clock as both the raw fraction and something readable. */
   time: () => Record<string, unknown>
@@ -158,6 +169,10 @@ export function installBridge() {
         todPhase: phaseName(live.timeOfDay),
         sunElev: round2(live.sunElev),
         night: round2(live.night),
+        places: `${discoveredCount(useGame.getState().discovered)}/${LANDMARKS.length}`,
+        discovered: LANDMARKS.filter((l) => isDiscovered(useGame.getState().discovered, l.id)).map(
+          (l) => l.name,
+        ),
       }
       // eslint-disable-next-line no-console
       console.log('[stats]', JSON.stringify(s, null, 2))
@@ -207,6 +222,20 @@ export function installBridge() {
       const c = useGame.getState().ceremony
       return c ? { ...c } : null
     },
+
+    // Distances are in each landmark's own shape terms, so `dist < trigger` is
+    // exactly the condition the game tests. Verification reads this rather than
+    // guessing from pixels.
+    landmarks: () =>
+      LANDMARKS.map((l) => ({
+        id: l.id,
+        name: l.name,
+        found: isDiscovered(useGame.getState().discovered, l.id),
+        dist: Number(landmarkDistance(l, live.cat.pos.x, live.cat.pos.z).toFixed(2)),
+        trigger: l.trigger,
+      })),
+
+    discover: (id: number) => useGame.getState().discover(id),
 
     setTime: (t: number) => {
       live.timeOfDay = wrapTime(t)
