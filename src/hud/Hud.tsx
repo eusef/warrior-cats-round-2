@@ -15,6 +15,28 @@ import { DuelControls } from './DuelControls'
 import { Joystick } from './Joystick'
 
 /**
+ * Show or hide one piece of HUD chrome, and the ONLY way any of it is hidden.
+ *
+ * All three properties, always, together. `opacity` alone leaves a fully
+ * tappable button sitting invisible on top of whatever is underneath it, which
+ * is exactly what the duel grid did to the Stalk button: she could only press
+ * the sliver of ring that the four hidden move buttons did not cover.
+ *
+ * `visibility` is the one that actually cannot be argued with. An element that
+ * is not visible is not hit-tested, and unlike `pointer-events` a descendant
+ * cannot quietly opt back in by setting `auto` on itself.
+ *
+ * Only for chrome that flips instantly. Anything with an opacity transition
+ * would need the visibility flip deferred to the end of the fade.
+ */
+function setShown(el: HTMLElement | null, show: boolean) {
+  if (!el) return
+  el.style.opacity = show ? '1' : '0'
+  el.style.visibility = show ? 'visible' : 'hidden'
+  el.style.pointerEvents = show ? 'auto' : 'none'
+}
+
+/**
  * Plain DOM over the canvas, never in WebGL.
  *
  * One rAF loop writes bar widths, the joystick transform and the button label
@@ -76,21 +98,14 @@ export function Hud() {
       if (rivalPill.current) {
         rivalPill.current.style.opacity = duelling ? '1' : '0'
       }
-      if (fightBtn.current) {
-        const show = live.duel.inRange
-        fightBtn.current.style.opacity = show ? '1' : '0'
-        fightBtn.current.style.pointerEvents = show ? 'auto' : 'none'
-      }
-      if (moveGrid.current) {
-        moveGrid.current.style.opacity = duelling ? '1' : '0'
-        moveGrid.current.style.pointerEvents = duelling ? 'auto' : 'none'
-      }
-      if (actionBtn.current) {
-        // No stalking mice mid-fight. Hidden rather than disabled: a dead
-        // button she can still press is worse than one that is not there.
-        actionBtn.current.style.opacity = duelling ? '0' : '1'
-        actionBtn.current.style.pointerEvents = duelling ? 'none' : 'auto'
-      }
+      // Fight and the move grid overlap on screen, so `inRange` alone is not
+      // enough: it is recomputed a frame AFTER a duel starts, and this loop
+      // runs on its own rAF in between. `&& !duelling` closes that frame.
+      setShown(fightBtn.current, live.duel.inRange && !duelling)
+      setShown(moveGrid.current, duelling)
+      // No stalking mice mid-fight. Hidden rather than disabled: a dead button
+      // she can still press is worse than one that is not there.
+      setShown(actionBtn.current, !duelling)
 
       // Low hunger pulses the pill and dims the screen edge. Readable across a room.
       const low = live.hunger <= HUNGER_LOW_THRESHOLD

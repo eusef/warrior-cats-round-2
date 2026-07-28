@@ -99,6 +99,29 @@ public/models/         # .glb only
 - Audio cannot start without a user gesture. Initialize the audio context on the first tap of the title screen. Creating and resuming it is **not** enough on iOS: Safari only hands over the output once a buffer has actually been played from inside that gesture, so `unlockAudio()` plays one silent sample there.
 - **Low Power Mode silences WebAudio**, ringer on and volume up notwithstanding. This cost a debugging round on an iPhone before the device was even the target. Check the battery icon before touching the audio code. `?debug=1` reads out context state, master-bus RMS and cue counts precisely so this is a ten-second check rather than a guess.
 - Touch targets are at least 44 CSS px.
+- **Never call `setPointerCapture` in a touch handler.** It throws
+  `NotFoundError` whenever the pointer is not active by the time the handler
+  runs, which on iOS is exactly what happens when the system has already claimed
+  the touch for a gesture. If anything after the throw was going to change game
+  state, it never runs. Catch the release on `window` instead, the way
+  `useTouchInput` does for the joystick: it does the same job and cannot throw.
+- **Do the state change first in a press handler, decoration after.** A handler
+  that sets a "held" latch, then throws, then never engages, leaves a button
+  that is dead for the rest of the session rather than for one tap.
+- **Keep tappable things out of the bottom edge.** In landscape Safari without
+  Add to Home Screen `env(safe-area-inset-bottom)` is `0px`, so a small margin
+  puts a control inside the home-indicator swipe strip and iPadOS competes for
+  the touch. `HUD_EDGE_MARGIN_Y` exists for this and is 72, not 28.
+- **Hide a control with `setShown`, never with `opacity` alone.** An invisible
+  element is still hit-tested, so an `opacity: 0` button goes on eating every
+  press that lands on it. Worse, `pointer-events: none` on a parent does **not**
+  stop a child that sets `auto` on itself: the duel grid did exactly that, and
+  its four hidden move buttons sat on top of the Stalk button and swallowed
+  19 of 25 presses. Only the outer ring still worked, and it read as a
+  fiddly button rather than as a bug. `setShown` in `Hud.tsx` writes `opacity`,
+  `visibility` and `pointerEvents` together and is the only thing allowed to
+  hide HUD chrome. `visibility` is the load-bearing one, because a descendant
+  cannot quietly opt back out of it.
 - `apple-mobile-web-app-capable` so Add to Home Screen runs it without Safari chrome.
 - **Assume nothing verified on desktop Chrome works on the iPad.** Safari is the test.
 

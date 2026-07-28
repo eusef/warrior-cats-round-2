@@ -19,7 +19,9 @@ import { tapDuelMove, tapFight, tapFlee, type DuelMove } from '../input/useTouch
  * The Fight prompt and the four duel buttons.
  *
  * Both are mounted for the whole of play and shown or hidden by the HUD's rAF
- * loop writing `opacity` and `pointerEvents`, never by React. Proximity to the
+ * loop calling `setShown`, never by React -- and `setShown` is the only thing
+ * allowed to, because half-hiding a button is what made the Stalk button
+ * unpressable on the iPad. Proximity to the
  * rival changes every frame, and a component that re-mounted on it would
  * re-render the HUD continuously for the length of a fight.
  *
@@ -61,6 +63,10 @@ export function DuelControls({ fight, moves }: DuelControlRefs) {
         style={{
           right: `calc(${HUD_EDGE_MARGIN_X}px + var(--safe-right))`,
           bottom: `calc(${FIGHT_BOTTOM}px + var(--safe-bottom))`,
+          // Starts hidden; the HUD's rAF loop owns it from the first frame.
+          opacity: 0,
+          visibility: 'hidden',
+          pointerEvents: 'none',
         }}
       />
 
@@ -76,7 +82,24 @@ export function DuelControls({ fight, moves }: DuelControlRefs) {
           gridTemplateColumns: `repeat(2, ${DUEL_BUTTON_SIZE}px)`,
           gridTemplateRows: `repeat(2, ${DUEL_BUTTON_SIZE}px)`,
           gap: DUEL_BUTTON_GAP,
+          // This div is the ONE owner of hidden-versus-shown for all four
+          // buttons, and all three properties are load-bearing:
+          //
+          //   opacity     not inherited, but it composites the whole subtree,
+          //               so 0 here draws none of the four.
+          //   visibility  inherited, and an element that is not visible is not
+          //               hit-tested at all. This is the belt to pointerEvents'
+          //               braces.
+          //   pointerEvents  inherited -- but `none` here does NOT stop a child
+          //               that sets `auto` on itself. The children used to do
+          //               exactly that, which left all four buttons tappable
+          //               while invisible, sitting on top of the Stalk button
+          //               and eating every press but the outer ring of it.
+          //
+          // So: no child may name any of these three. Add a button to the grid
+          // and give it position only.
           opacity: 0,
+          visibility: 'hidden',
           pointerEvents: 'none',
           zIndex: 30,
         }}
@@ -103,9 +126,10 @@ function GridButton(props: {
       {...rest}
       size={DUEL_BUTTON_SIZE}
       onTap={onTap ?? (() => (move ? tapDuelMove(move) : undefined))}
-      // The grid parent owns visibility for all four at once, so the children
-      // opt back in and let it do the hiding.
-      style={{ position: 'relative', opacity: 1, pointerEvents: 'auto' }}
+      // Position ONLY. The grid parent owns hidden-versus-shown for all four,
+      // and a child must not name `pointerEvents`, `visibility` or `opacity` at
+      // all -- see the note on the grid div above for what that cost.
+      style={{ position: 'relative' }}
     />
   )
 }
@@ -222,8 +246,9 @@ function DuelButton({
         zIndex: 30,
         touchAction: 'none',
         cursor: 'pointer',
-        opacity: 0,
-        pointerEvents: 'none',
+        // No opacity, visibility or pointerEvents here on purpose. Whatever
+        // owns this button's visibility -- the grid parent for the four moves,
+        // its own `style` for the Fight prompt -- owns all three together.
         ...style,
       }}
     >
