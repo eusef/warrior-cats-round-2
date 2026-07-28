@@ -327,6 +327,14 @@ export const AUDIO_CATCH_GAIN = 0.3
 export const AUDIO_CEREMONY_GAIN = 0.34
 export const AUDIO_TICK_GAIN = 0.13 // creation-sheet taps, deliberately near-subliminal
 
+// Combat stings. One per move so the three attacks are tellable apart with the
+// screen off, plus an impact for a hit and a whiff for a miss. A miss that
+// sounds like nothing reads as a broken button, which is why whiff exists.
+export const AUDIO_SWIPE_GAIN = 0.24
+export const AUDIO_KICK_GAIN = 0.32
+export const AUDIO_IMPACT_GAIN = 0.36
+export const AUDIO_WHIFF_GAIN = 0.17
+
 // Birdsong. Gaps are seconds of real time between one bird and the next.
 export const AUDIO_BIRD_GAIN = 0.14
 export const AUDIO_BIRD_MIN_GAP = 4
@@ -537,3 +545,121 @@ export const LANDMARK_COLOR_TRUNK = '#4a3524'
 export const LANDMARK_COLOR_CANOPY = '#33591f'
 export const LANDMARK_COLOR_ROCK = '#9a9384'
 export const LANDMARK_ROAD_COLOR = '#2e2e31'
+
+// --- Combat -----------------------------------------------------------------
+// Mila's move set. Two rules carry the whole system:
+//
+//   1. Slow moves hit harder and reach further, but can be interrupted during
+//      their wind-up.
+//   2. Slow moves leave you helpless for longer afterwards, so they can be
+//      punished.
+//
+// Everything below is decoration on those two. All three of wind-up, reach and
+// recovery scale together on purpose: the strongest move is the slowest, the
+// longest reaching, and the most punishable.
+//
+// Cats do not die here. The loser yields and runs off, health is a number on a
+// bar, and there is no blood, no wound and no killing blow. See CLAUDE.md.
+
+/**
+ * windup    seconds of commit before the hit is checked. Movement locks.
+ * strike    seconds the lunge travels over. NOT in the original spec: it gives
+ *           lunge as a distance with no duration, and a distance needs a time.
+ * reach     metres, tested at the END of wind-up, before the lunge travels.
+ *           That is what makes "the CPU backed off mid-wind-up" a clean miss.
+ * damage    points off the target's health bar.
+ * recovery  seconds helpless afterwards. This is the punish window.
+ * lunge     metres travelled forward during the strike. 0 = stand and swing.
+ * hop       metres of vertical arc during the strike. Feeds the landing squash
+ *           in useCatJuice for free, the same way the hunting pounce does.
+ */
+export interface Move {
+  windup: number
+  strike: number
+  reach: number
+  damage: number
+  recovery: number
+  lunge: number
+  hop: number
+}
+
+export const SWIPE: Move = { windup: 0.35, strike: 0.1, reach: 1.5, damage: 8, recovery: 0.2, lunge: 0, hop: 0 }
+export const POUNCE: Move = { windup: 0.7, strike: 0.22, reach: 3.0, damage: 16, recovery: 0.4, lunge: 2.0, hop: 0.55 }
+export const JUMPKICK: Move = { windup: 1.2, strike: 0.3, reach: 4.5, damage: 30, recovery: 0.7, lunge: 3.0, hop: 1.15 }
+
+export const DUEL_PROMPT_RADIUS = 4 // metres; the Fight button appears inside this
+export const DUEL_CAM_DISTANCE = 6 // metres the camera pulls back to in a duel
+export const FLEE_DISTANCE = 15 // metres from the rival at which a flee closes the duel
+export const FLEE_SPEED_BONUS = 1.3 // multiplies top speed while running away
+
+/** Seconds of stagger after a wind-up is interrupted. The spec says "short"
+ *  without a number; long enough to read as a punish, short enough not to sting. */
+export const DUEL_STAGGER_DURATION = 0.45
+/** Radians either side of straight ahead that a strike can connect within.
+ *  1.0 rad is about 57 degrees, so turning your back genuinely whiffs. */
+export const DUEL_HIT_ARC = 1.0
+/** Reach is measured centre-to-centre, so both bodies get counted once. */
+export const DUEL_BODY_RADIUS = 0.35
+/** Seconds the hit-react clip plays on whoever just took damage. */
+export const DUEL_HIT_FLINCH = 0.32
+/** Seconds of yield beat after a health bar empties, before the duel closes. */
+export const DUEL_END_DELAY = 1.4
+/** Health the player is restored to on a loss. She backs off and keeps
+ *  everything: position, hunts, name. No fail state that punishes. */
+export const DUEL_LOSS_HEALTH_FLOOR = 35
+/** Seconds after a duel ends before the rival can be challenged again. */
+export const DUEL_REMATCH_DELAY = 6
+
+// Soft lock-on. The follow camera is extended, never replaced: it leans its
+// look point toward the midpoint and opens the dolly with the gap so a
+// jump-kick approach is readable. It never takes the thumb's yaw away.
+export const DUEL_CAM_LOOK_BLEND = 0.38 // 0 = all player, 1 = all rival
+export const DUEL_CAM_GAP_DOLLY = 0.3 // extra metres of pull-back per metre of gap
+export const DUEL_CAM_MAX_DISTANCE = 9 // ceiling on the duel dolly
+export const DUEL_CAM_LOCK_LAG = 3.2 // per second, how fast lock-on fades in and out
+
+// The rival. One wandering cat, spawned away from camp and away from every
+// landmark so walking into her is its own small event.
+export const RIVAL_SPAWN: readonly [number, number] = [34, -24]
+export const RIVAL_HOME_RADIUS = 20 // metres she strays from RIVAL_SPAWN while wandering
+export const RIVAL_WANDER_SPEED = 1.7 // m/s, an ambling patrol
+export const RIVAL_WANDER_RETARGET_MIN = 3.0 // seconds
+export const RIVAL_WANDER_RETARGET_MAX = 7.0
+export const RIVAL_START_HEALTH = 100
+export const RIVAL_TURN_SPEED = 6 // radians/s
+export const RIVAL_ACCEL = 10
+export const RIVAL_DECEL = 14
+
+// Duel AI. Approach when out of range, attack when in range, occasionally back
+// off or circle. That is the whole thing. No difficulty curve, no adaptive
+// behaviour, no reaction-based dodging: watch Mila play before making it smarter.
+export const RIVAL_APPROACH_SPEED = 4.2 // m/s closing on the player
+export const RIVAL_BACKOFF_SPEED = 3.0 // m/s while repositioning
+export const RIVAL_PREFERRED_GAP = 2.2 // metres she tries to hold when attacking
+export const RIVAL_DECIDE_MIN = 0.45 // seconds between AI decisions
+export const RIVAL_DECIDE_MAX = 1.1
+export const RIVAL_REPOSITION_CHANCE = 0.28 // odds a decision is "back off and circle"
+export const RIVAL_REPOSITION_TIME = 0.9 // seconds a reposition lasts
+/** Weighted-random move pick, biased to swipe and pounce with the occasional
+ *  jump-kick. Moves whose reach cannot cover the current gap are dropped first. */
+export const RIVAL_WEIGHT_SWIPE = 0.5
+export const RIVAL_WEIGHT_POUNCE = 0.35
+export const RIVAL_WEIGHT_JUMPKICK = 0.15
+export const RIVAL_FLEE_SPEED = 6.2 // m/s while yielding and running off
+export const RIVAL_FLEE_TIME = 3.5 // seconds of running before she despawns
+
+/** She is always a different cat from Mila's, whatever pelt Mila picked, so the
+ *  two are never confusable mid-fight. Not a PELTS index for exactly that reason. */
+export const RIVAL_MAIN_COLOR = '#5c4a3a'
+export const RIVAL_LIGHT_COLOR = '#b9a888'
+export const RIVAL_EYE_COLOR = '#f2d24a'
+
+// HUD. Four buttons in a 2x2 block where the Stalk button sits outside a duel,
+// entirely inside the right half of the screen: the joystick has no fixed home
+// and spawns wherever a finger lands on the left, so anything placed there
+// would eat movement area.
+export const DUEL_BUTTON_SIZE = 96 // CSS px; well over the 44px touch minimum
+export const DUEL_BUTTON_GAP = 12
+/** Per-second exponential approach of the drawn health bar toward the real
+ *  value, so damage reads as a tick-down rather than a jump cut. */
+export const HEALTH_BAR_EASE = 7

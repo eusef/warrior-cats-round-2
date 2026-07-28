@@ -31,7 +31,23 @@ export const input = {
   action: false,
   /** Set true for one frame on the release edge. Consumed by PlayerCat. */
   actionReleased: false,
+
+  // Duel taps. All three are latched edges rather than held states: a duel
+  // move is a discrete commitment, and holding a button down through a
+  // 1.2-second jump-kick must not queue a second one. PlayerCat consumes and
+  // clears each of them, so a tap that arrives on a frame the game is not
+  // playing is dropped rather than banked.
+  /** The move whose button was last tapped, or null. */
+  duelMove: null as DuelMove | null,
+  /** The Fight prompt was tapped. */
+  fightTap: false,
+  /** Run away was tapped. Always honoured, whatever phase she is in. */
+  fleeTap: false,
 }
+
+/** Mirrors MoveId in game/duel.ts. Declared locally so the input layer stays a
+ *  leaf module that imports nothing but its own constants. */
+export type DuelMove = 'swipe' | 'pounce' | 'jumpkick'
 
 export function resetInput() {
   input.move.x = 0
@@ -42,6 +58,23 @@ export function resetInput() {
   input.lookDY = 0
   input.action = false
   input.actionReleased = false
+  input.duelMove = null
+  input.fightTap = false
+  input.fleeTap = false
+}
+
+/** Called by the four duel buttons, so touch and the debug hooks share one
+ *  code path into the game exactly the way setActionHeld already does. */
+export function tapDuelMove(move: DuelMove) {
+  input.duelMove = move
+}
+
+export function tapFight() {
+  input.fightTap = true
+}
+
+export function tapFlee() {
+  input.fleeTap = true
 }
 
 /** Called by <ActionButton/> so touch and keyboard share one code path. */

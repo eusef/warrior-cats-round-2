@@ -18,6 +18,11 @@ import {
   CREATE_CAM_HEIGHT,
   CREATE_CAM_LOOK_HEIGHT,
   CREATE_CAM_MIN_CLEARANCE,
+  DUEL_CAM_DISTANCE,
+  DUEL_CAM_GAP_DOLLY,
+  DUEL_CAM_LOCK_LAG,
+  DUEL_CAM_LOOK_BLEND,
+  DUEL_CAM_MAX_DISTANCE,
   CREATE_CAM_ORBIT_SPEED,
 } from '../game/constants'
 import { live } from '../game/live'
@@ -67,11 +72,28 @@ export function FollowCamera() {
     // The camera eases back a little as she gets up to speed and closes again
     // when she stops. Creation is exempt: that framing is composed against a
     // fixed distance and a dolly would break it.
+    // Soft lock-on. Not a separate combat camera and not a cinematic: the same
+    // follow rig, leaning its aim toward the rival and opening its distance
+    // with the gap so a jump-kick approach is readable. The thumb keeps the
+    // yaw, always -- a camera that fights the player's thumb feels broken, and
+    // that is as true in a fight as out of one.
+    const locking = live.duel.active && live.rival.active
+    live.duel.lock += ((locking ? 1 : 0) - live.duel.lock) * (1 - Math.exp(-DUEL_CAM_LOCK_LAG * delta))
+    const lock = live.duel.lock
+
     if (creating) {
       dolly.current = CREATE_CAM_DISTANCE
     } else {
-      const target =
+      const speedTarget =
         CAM_DISTANCE + CAM_SPEED_DOLLY * clamp(live.cat.speed / CAT_RUN_SPEED, 0, 1)
+      // Pull back far enough to hold both cats. Clamped, or a rival who has
+      // wandered off during the yield beat would drag the camera into orbit.
+      const gap = Number.isFinite(live.duel.gap) ? live.duel.gap : 0
+      const duelTarget = Math.min(
+        DUEL_CAM_DISTANCE + DUEL_CAM_GAP_DOLLY * gap,
+        DUEL_CAM_MAX_DISTANCE,
+      )
+      const target = speedTarget + (duelTarget - speedTarget) * lock
       dolly.current += (target - dolly.current) * (1 - Math.exp(-CAM_DOLLY_LAG * delta))
     }
 
@@ -96,6 +118,18 @@ export function FollowCamera() {
     if (_target.y < floor) _target.y = floor
 
     _look.set(p.x, p.y + lookHeight, p.z)
+
+    // Lean the aim point toward the rival, biased so she stays in frame rather
+    // than sitting dead centre between them. This is the ONLY thing the lock-on
+    // moves besides the distance: the existing CAM_LOOK_LAG easing below then
+    // smooths it for free, which is why there is no new smoothing code here and
+    // why the camera can never snap or cut.
+    if (lock > 0.001) {
+      const rp = live.rival.pos
+      _look.x += (rp.x - _look.x) * DUEL_CAM_LOOK_BLEND * lock
+      _look.z += (rp.z - _look.z) * DUEL_CAM_LOOK_BLEND * lock
+      _look.y += (rp.y + lookHeight - _look.y) * DUEL_CAM_LOOK_BLEND * lock
+    }
 
     if (live.camera.snap) {
       live.camera.snap = false

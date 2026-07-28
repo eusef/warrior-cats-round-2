@@ -1,10 +1,10 @@
 # Spec: Combat
 
-| Field | Value |
-| ----- | ----- |
-| Status | 🔄 In progress |
-| Design | Mila |
-| Tuning | Phil |
+| Field      | Value                                   |
+| ---------- | --------------------------------------- |
+| Status     | 🔄 In progress                           |
+| Design     | Mila                                    |
+| Tuning     | Phil                                    |
 | Depends on | movement, health bar, HUD action button |
 
 Read alongside `CLAUDE.md`. Every rule there still applies, especially the content policy and the R3F rules. This file only adds what is specific to combat.
@@ -43,12 +43,12 @@ Everything else is decoration.
 
 This is the part most likely to be built wrong. Be explicit:
 
-| Phase | Movement |
-| ----- | -------- |
-| Neutral (no move active) | **Full speed, full 360 control, same as outside combat** |
-| Wind-up | Locked or heavily slowed, the cat is committed |
-| Strike | Driven by the move itself (pounce and jump-kick lunge forward) |
-| Recovery | Locked, this is the punish window |
+| Phase                    | Movement                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| Neutral (no move active) | **Full speed, full 360 control, same as outside combat**     |
+| Wind-up                  | Locked or heavily slowed, the cat is committed               |
+| Strike                   | Driven by the move itself (pounce and jump-kick lunge forward) |
+| Recovery                 | Locked, this is the punish window                            |
 
 The joystick is never disabled and never hidden. Between moves the player has complete freedom to reposition, circle, or retreat. Distance management is the skill the fight is teaching.
 
@@ -68,12 +68,12 @@ Do not build a separate combat camera from scratch. Extend the existing follow c
 
 Wind-up is the commit time before the hit lands. Reach is how far it connects. Recovery is how long you are helpless afterwards. **All three scale together:** the strongest move is the slowest, the longest reaching, and the most punishable.
 
-| Move | Wind-up | Reach | Damage | Recovery | Role |
-| ---- | ------- | ----- | ------ | -------- | ---- |
-| Swipe | Fastest | Shortest | Low | Shortest | Safe chip damage up close, hard to punish |
-| Pounce | Medium | Medium, lunges forward | Medium | Medium | The workhorse, closes distance |
-| Jump-kick | Slowest | Longest, big leap | High | Longest | High reward gap-closer, wide open if it misses |
-| Run away | n/a | n/a | none | n/a | Break off and end the duel |
+| Move      | Wind-up | Reach                  | Damage | Recovery | Role                                           |
+| --------- | ------- | ---------------------- | ------ | -------- | ---------------------------------------------- |
+| Swipe     | Fastest | Shortest               | Low    | Shortest | Safe chip damage up close, hard to punish      |
+| Pounce    | Medium  | Medium, lunges forward | Medium | Medium   | The workhorse, closes distance                 |
+| Jump-kick | Slowest | Longest, big leap      | High   | Longest  | High reward gap-closer, wide open if it misses |
+| Run away  | n/a     | n/a                    | none   | n/a      | Break off and end the duel                     |
 
 Numbers live in `constants.ts`, never here. Starting values for Phil to tune by feel:
 
@@ -103,13 +103,13 @@ That is what makes jump-kick a gamble. Its long wind-up gives the opponent time 
 
 ### Worked examples
 
-| Situation | Result |
-| --------- | ------ |
+| Situation                                                    | Result                                       |
+| ------------------------------------------------------------ | -------------------------------------------- |
 | Player jump-kicks from far, CPU closes and swipes during wind-up | Kick cancelled, zero damage, player staggers |
-| Player jump-kicks from far, CPU stays put | Kick lands for full damage |
-| Player swipes from 3m away | Clean miss, out of reach, short recovery |
-| Player pounces, CPU backs off mid-wind-up | Lunge travels but the target moved, miss |
-| Both attack at once and both connect | Both take damage, this is fine |
+| Player jump-kicks from far, CPU stays put                    | Kick lands for full damage                   |
+| Player swipes from 3m away                                   | Clean miss, out of reach, short recovery     |
+| Player pounces, CPU backs off mid-wind-up                    | Lunge travels but the target moved, miss     |
+| Both attack at once and both connect                         | Both take damage, this is fine               |
 
 ## Duel state machine
 
@@ -180,7 +180,12 @@ Blocking, dodging as a button, combos, special moves, multiple simultaneous oppo
 
 ## Revision log
 
-| Date | Change |
-| ---- | ------ |
-| 2026-07-27 | Initial spec from Mila's design |
+| Date       | Change                                                       |
+| ---------- | ------------------------------------------------------------ |
+| 2026-07-27 | Initial spec from Mila's design                              |
 | 2026-07-27 | Combat is real time with full 3D movement, not turn based. Added reach and recovery per move, soft lock-on camera, CPU movement states, positional flee. |
+
+|      |      |
+| ---- | ------ |
+|      |      |
+|      |      |

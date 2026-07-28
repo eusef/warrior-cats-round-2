@@ -5,6 +5,8 @@ import {
   AUDIO_CRICKET_FADE,
   AUDIO_CRICKET_GAIN,
   AUDIO_CRICKET_RATE,
+  AUDIO_IMPACT_GAIN,
+  AUDIO_KICK_GAIN,
   AUDIO_MASTER_GAIN,
   AUDIO_MEOW_GAIN,
   AUDIO_OWL_GAIN,
@@ -13,7 +15,9 @@ import {
   AUDIO_PURR_GAIN,
   AUDIO_PURR_RATE,
   AUDIO_STEP_GAIN,
+  AUDIO_SWIPE_GAIN,
   AUDIO_TICK_GAIN,
+  AUDIO_WHIFF_GAIN,
 } from '../game/constants'
 
 /**
@@ -60,6 +64,10 @@ export const audioCounts = {
   step: 0,
   meow: 0,
   pounce: 0,
+  swipe: 0,
+  kick: 0,
+  impact: 0,
+  whiff: 0,
   catch: 0,
   ceremony: 0,
   tick: 0,
@@ -153,6 +161,10 @@ export function audioDiagnostics() {
     audioCounts.step +
     audioCounts.meow +
     audioCounts.pounce +
+    audioCounts.swipe +
+    audioCounts.kick +
+    audioCounts.impact +
+    audioCounts.whiff +
     audioCounts.catch +
     audioCounts.ceremony +
     audioCounts.tick +
@@ -401,6 +413,163 @@ export function playPounce() {
   src.start(t)
   src.stop(t + dur + 0.02)
   audioCounts.pounce++
+}
+
+/**
+ * A claw swipe. The pounce's graph, half the length and an octave up: the sweep
+ * starts above where the pounce starts and stops well before the pounce lands,
+ * so the two can never be mistaken for the same move. Air, not contact.
+ */
+export function playSwipe(): void {
+  if (!ctx || !master || !noise) return
+  const t = ctx.currentTime
+  const dur = 0.12
+  const src = ctx.createBufferSource()
+  src.buffer = noise
+  // Jittered the way the paws are, so a flurry is not one sample repeating.
+  src.playbackRate.value = 0.9 + Math.random() * 0.3
+
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.setValueAtTime(5200, t)
+  bp.frequency.exponentialRampToValueAtTime(1600, t + dur)
+  bp.Q.value = 2.2
+
+  const env = ctx.createGain()
+  const peak = Math.max(0.0002, AUDIO_SWIPE_GAIN)
+  // A 12ms attack against the pounce's 50. The speed of the attack is most of
+  // what makes this read as lighter, more than the pitch does.
+  env.gain.setValueAtTime(0.0001, t)
+  env.gain.linearRampToValueAtTime(peak, t + 0.012)
+  env.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+  src.connect(bp).connect(env).connect(master)
+  src.start(t)
+  src.stop(t + dur + 0.02)
+  audioCounts.swipe++
+}
+
+/**
+ * The jump-kick launching. The biggest of the three efforts: the longest sweep,
+ * ending an octave below where the pounce ends, with one low triangle under it.
+ * Filtered noise has no fundamental, so without that note the effort is a hiss
+ * and the move sounds small.
+ */
+export function playKick(): void {
+  if (!ctx || !master || !noise) return
+  const t = ctx.currentTime
+  const dur = 0.34
+  const src = ctx.createBufferSource()
+  src.buffer = noise
+  src.playbackRate.value = 0.7 + Math.random() * 0.25
+
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.setValueAtTime(1800, t)
+  bp.frequency.exponentialRampToValueAtTime(240, t + dur)
+  // Wider than the swipe's on purpose. A narrow band down at 240Hz whistles.
+  bp.Q.value = 1.1
+
+  const env = ctx.createGain()
+  const peak = Math.max(0.0002, AUDIO_KICK_GAIN)
+  env.gain.setValueAtTime(0.0001, t)
+  env.gain.linearRampToValueAtTime(peak, t + 0.055)
+  env.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+  src.connect(bp).connect(env).connect(master)
+  src.start(t)
+  src.stop(t + dur + 0.02)
+
+  // The weight, under the air. Shorter than the sweep so it does not hang.
+  blip(110, t, dur * 0.8, AUDIO_KICK_GAIN * 0.55, 'triangle')
+  audioCounts.kick++
+}
+
+/**
+ * A hit landing. Built like a paw step rather than like a swipe: a bandpassed
+ * texture path and a lowpassed body path summed into one envelope, with a low
+ * triangle for the push.
+ *
+ * Soft and padded, and that is a content rule rather than a taste call. A hit
+ * here is a number moving on a health bar and nothing else, so this is a
+ * cushion being thumped. The band sits at ~450Hz where the step's sits at
+ * 1500-3000, and the attack is 25ms against the step's 5, which is what keeps
+ * it a thud instead of the crack it is not allowed to be. Do not sharpen it.
+ */
+export function playImpact(): void {
+  if (!ctx || !master || !noise) return
+  const t = ctx.currentTime
+  const dur = 0.18
+  const src = ctx.createBufferSource()
+  src.buffer = noise
+  src.playbackRate.value = 0.6 + Math.random() * 0.25
+
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.value = 380 + Math.random() * 150
+  bp.Q.value = 0.7
+
+  // The body, exactly as the step does it, but louder relative to the texture:
+  // a thump is mostly low end with a little dust on top, not the other way up.
+  const lp = ctx.createBiquadFilter()
+  lp.type = 'lowpass'
+  lp.frequency.value = 200
+
+  const env = ctx.createGain()
+  const peak = Math.max(0.0002, AUDIO_IMPACT_GAIN)
+  env.gain.setValueAtTime(0.0001, t)
+  env.gain.linearRampToValueAtTime(peak, t + 0.025)
+  env.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+  const body = ctx.createGain()
+  body.gain.value = 0.9
+
+  src.connect(bp).connect(env)
+  src.connect(lp).connect(body).connect(env)
+  env.connect(master)
+
+  src.start(t)
+  src.stop(t + dur + 0.02)
+
+  blip(150, t, 0.13, AUDIO_IMPACT_GAIN * 0.5, 'triangle')
+  audioCounts.impact++
+}
+
+/**
+ * A miss. Narrow enough to be nearly pitched and sweeping up rather than down,
+ * with a soft attack and a tail five times longer than it: the one voice here
+ * that has to sound like nothing happened.
+ *
+ * Quietest of the four twice over. The gain is the lowest of the set, and a Q
+ * of 4 passes about 250Hz of a 24kHz noise buffer, so it lands well under the
+ * swipe even before its number is read. That is the intent, not a bug to make
+ * up for the way the crickets do.
+ */
+export function playWhiff(): void {
+  if (!ctx || !master || !noise) return
+  const t = ctx.currentTime
+  const dur = 0.22
+  const src = ctx.createBufferSource()
+  src.buffer = noise
+  src.playbackRate.value = 0.9 + Math.random() * 0.3
+
+  const bp = ctx.createBiquadFilter()
+  bp.type = 'bandpass'
+  bp.frequency.setValueAtTime(900, t)
+  bp.frequency.exponentialRampToValueAtTime(1400, t + dur)
+  // Tonal and breathy. Anything near the swipe's 2.2 is just a quiet swipe.
+  bp.Q.value = 4
+
+  const env = ctx.createGain()
+  const peak = Math.max(0.0002, AUDIO_WHIFF_GAIN)
+  env.gain.setValueAtTime(0.0001, t)
+  env.gain.linearRampToValueAtTime(peak, t + 0.045)
+  env.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+
+  src.connect(bp).connect(env).connect(master)
+  src.start(t)
+  src.stop(t + dur + 0.02)
+  audioCounts.whiff++
 }
 
 /** The reward. Two bright notes, up. Short enough not to interrupt play. */

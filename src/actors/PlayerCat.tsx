@@ -16,6 +16,7 @@ import {
   CAT_WALK_THRESHOLD,
   CAMP_RADIUS,
   EAT_DURATION,
+  FLEE_SPEED_BONUS,
   MEAL_HUNGER_RESTORE,
   POUNCE_COOLDOWN,
   POUNCE_DURATION,
@@ -28,6 +29,18 @@ import {
   EYE_COLORS,
   PELTS,
 } from '../game/constants'
+import {
+  MOVES,
+  advance,
+  applyHit,
+  duelPose,
+  inReach,
+  isLocked,
+  resetCombatant,
+  startMove,
+  strikeDrive,
+  type Drive,
+} from '../game/duel'
 import { undiscoveredHit } from '../game/landmarks'
 import { live, resetLive } from '../game/live'
 import { feed, tickNeeds } from '../game/needs'
@@ -35,6 +48,7 @@ import { useGame, type Identity } from '../game/store'
 import { clamp, distToCamp, groundHeightAt } from '../game/terrain'
 import { input } from '../input/useTouchInput'
 import { treeColliders } from '../world/Foliage'
+import { logMove } from '../debug/duelLog'
 import { debugHooks } from '../debug/expose'
 import { preyRegistry } from './preyRegistry'
 import { useCatAnimation } from './useCatAnimation'
@@ -47,6 +61,7 @@ useGLTF.preload(MODEL_URL)
 // Hoisted. Nothing is allocated inside useFrame.
 const _dir = new THREE.Vector2()
 const _desired = new THREE.Vector2()
+const _drive: Drive = { speed: 0, hop: 0 }
 const _juice: JuiceContext = {
   action: 'idle',
   speed: 0,
@@ -163,11 +178,75 @@ export function PlayerCat() {
 
     if (cat.pounceCooldown > 0) cat.pounceCooldown -= delta
 
+    // --- duel ---------------------------------------------------------------
+    // Her half of the machine. The rival owns her own half and the duel-level
+    // bookkeeping; this block is only ever about what Mila's thumb just did.
+    const duel = live.duel
+    const inDuel = playing && duel.active
+
+    // Run away is checked before anything else and is never gated on a phase.
+    // It is a safety valve, not a mechanic to balance: she should never be able
+    // to feel trapped in a fight she is losing, so a tap always lands, even
+    // mid-wind-up. The move she was committed to is simply dropped.
+    if (input.fleeTap) {
+      input.fleeTap = false
+      if (inDuel) {
+        resetCombatant(cat.duel)
+        if (live.rival.duel.phase !== 'strike') {
+          // Nothing is in the air, so there is nothing to run out from under.
+          useGame.getState().endDuel('fled')
+        } else {
+          duel.fleeing = true
+        }
+      }
+    }
+
+    if (input.fightTap) {
+      input.fightTap = false
+      if (playing && duel.inRange) useGame.getState().startDuel()
+    }
+
+    if (input.duelMove) {
+      const wanted = input.duelMove
+      input.duelMove = null
+      // startMove refuses unless she is neutral, which is the whole of why a
+      // mashed button cannot queue four jump-kicks. No buffer, no cancel.
+      if (inDuel && startMove(cat.duel, wanted)) {
+        logMove('player', wanted, duel.gap, false, 0, 'windup', live.health, live.rival.health)
+      }
+    }
+
+    if (playing) {
+      const ev = advance(cat.duel, delta)
+      if (ev === 'strike' && cat.duel.move) {
+        // Reach is tested here, at the END of the wind-up, before the lunge has
+        // travelled a metre. That is what makes "the rival backed off during
+        // the wind-up" an honest miss rather than a hit that catches up.
+        const m = MOVES[cat.duel.move]
+        const r = live.rival
+        const hit =
+          r.active &&
+          duel.active &&
+          inReach(cat.pos.x, cat.pos.z, cat.yaw, r.pos.x, r.pos.z, m.reach)
+        if (hit) {
+          const res = applyHit(r.duel, r.health, m.damage)
+          r.health = res.health
+          logMove('player', cat.duel.move, duel.gap, true, m.damage, res.result, live.health, r.health)
+        } else {
+          logMove('player', cat.duel.move, duel.gap, false, 0, 'miss', live.health, live.rival.health)
+        }
+      }
+    }
+
+    const locked = playing && isLocked(cat.duel)
+
     // --- intent -------------------------------------------------------------
     const busy = cat.eatT > 0
-    cat.crouched = playing && !busy && input.action && cat.pounceT <= 0
+    // No stalking mice mid-fight: the paw button is the duel's problem now, and
+    // a crouch during a duel would silently halve her speed for no visible reason.
+    cat.crouched = playing && !busy && !inDuel && !locked && input.action && cat.pounceT <= 0
 
-    if (playing && !busy && input.actionReleased) {
+    if (playing && !busy && !inDuel && !locked && input.actionReleased) {
       input.actionReleased = false
       if (cat.pounceT <= 0 && cat.pounceCooldown <= 0) {
         cat.pounceT = POUNCE_DURATION
@@ -192,7 +271,23 @@ export function PlayerCat() {
     const wantMag = playing && !busy ? Math.min(_dir.length(), 1) : 0
     if (wantMag > 0.0001) _dir.multiplyScalar(1 / _dir.length())
 
-    if (cat.pounceT > 0) {
+    if (locked) {
+      // Committed. Wind-up, recovery and stagger are all dead stops -- this is
+      // the punish window and it has to actually cost something -- and the
+      // strike drives its own lunge along the heading she committed on.
+      strikeDrive(cat.duel, _drive)
+      if (cat.duel.phase === 'strike') {
+        const sx = -Math.sin(cat.yaw)
+        const sz = -Math.cos(cat.yaw)
+        cat.vel.set(sx * _drive.speed, 0, sz * _drive.speed)
+        cat.speed = _drive.speed
+        cat.hopHeight = _drive.hop
+      } else {
+        cat.vel.set(0, 0, 0)
+        cat.speed = 0
+        cat.hopHeight = 0
+      }
+    } else if (cat.pounceT > 0) {
       // The pounce commits: it drives straight along the current heading.
       cat.pounceT -= delta
       const prog = 1 - clamp(cat.pounceT / POUNCE_DURATION, 0, 1)
@@ -239,6 +334,11 @@ export function PlayerCat() {
       const runBand = wantMag > CAT_WALK_THRESHOLD && !cat.crouched
       let top = runBand ? CAT_RUN_SPEED : CAT_WALK_SPEED
       if (cat.crouched) top *= CAT_CROUCH_SPEED_MULT
+      // Between moves a duel is ordinary movement at ordinary speed: full 360
+      // control, same as outside combat. Distance management is the skill the
+      // fight is teaching and it cannot be taught through treacle.
+      if (duel.fleeing) top *= FLEE_SPEED_BONUS
+      cat.hopHeight = 0
       const targetSpeed = wantMag * top
 
       _desired.set(_dir.x * targetSpeed, _dir.y * targetSpeed)
@@ -266,7 +366,9 @@ export function PlayerCat() {
     cat.pos.y = groundHeightAt(cat.pos.x, cat.pos.z) + CAT_GROUND_OFFSET
 
     // --- facing -------------------------------------------------------------
-    if (cat.speed > 0.05 && cat.pounceT <= 0) {
+    // A committed move locks the heading, same as the hunting pounce: the whole
+    // point of the wind-up is that she has already chosen where the hit goes.
+    if (cat.speed > 0.05 && cat.pounceT <= 0 && !locked) {
       const want = Math.atan2(-cat.vel.x, -cat.vel.z)
       cat.yaw += shortestAngle(cat.yaw, want) * Math.min(1, CAT_TURN_SPEED * delta)
     }
@@ -276,13 +378,20 @@ export function PlayerCat() {
     // which meant a thumb left on the paw button silently blocked all healing
     // with nothing on screen to explain why. She hunts with that button held,
     // so that was the common case, not the edge case.
+    // Standing still mid-wind-up is not resting, and healing through a fight
+    // would make the health bar meaningless.
     const atCamp = distToCamp(cat.pos.x, cat.pos.z) < CAMP_RADIUS
-    live.resting = playing && atCamp && cat.speed < 0.05 && !busy && cat.pounceT <= 0
+    live.resting =
+      playing && atCamp && cat.speed < 0.05 && !busy && cat.pounceT <= 0 && !duel.active
 
-    // Resting outranks crouch in the pose so the curled-up animation is an
+    // Combat outranks everything: a swing, a flinch or a stumble is the one
+    // thing on screen that has to read, and it is over in a third of a second.
+    // Resting outranks crouch below it so the curled-up animation is an
     // unambiguous "this is working". Any movement drops straight back to crouch.
+    const pose = playing ? duelPose(cat.duel) : null
     cat.action =
-      cat.pounceT > 0
+      pose ??
+      (cat.pounceT > 0
         ? 'pounce'
         : busy
           ? 'eat'
@@ -294,7 +403,7 @@ export function PlayerCat() {
                 ? 'run'
                 : cat.speed > 0.05
                   ? 'walk'
-                  : 'idle'
+                  : 'idle')
 
     if (playing) {
       // Rising edge only: say it once on arrival, not every frame she stands there.
@@ -368,8 +477,10 @@ function shortestAngle(from: number, to: number) {
   return d
 }
 
-/** Circular push-out against trunks. 190 checks a frame is cheaper than a grid. */
-function pushOutOfTrees(pos: THREE.Vector3) {
+/** Circular push-out against trunks. 190 checks a frame is cheaper than a grid.
+ *  Exported so the rival collides with the same trees rather than carrying a
+ *  second copy of this loop that could drift out of step with it. */
+export function pushOutOfTrees(pos: THREE.Vector3) {
   const bodyR = 0.35
   for (let i = 0; i < treeColliders.length; i++) {
     const t = treeColliders[i]

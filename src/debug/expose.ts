@@ -1,3 +1,4 @@
+import { startMove, type Combatant } from '../game/duel'
 import { live, resetLive } from '../game/live'
 import {
   audioCounts,
@@ -8,11 +9,15 @@ import {
   playCatch,
   playCeremony,
   playChirp,
+  playImpact,
+  playKick,
   playMeow,
   playOwl,
   playPounce,
   playStep,
+  playSwipe,
   playTick,
+  playWhiff,
   startCrickets,
   startPurr,
   stopCrickets,
@@ -22,7 +27,12 @@ import {
 import { catName, useGame, type Identity } from '../game/store'
 import { groundHeightAt } from '../game/terrain'
 import { LANDMARKS, discoveredCount, isDiscovered, landmarkDistance } from '../game/landmarks'
-import { DAY_LENGTH_SEC, HUNTS_TO_WARRIOR, NEED_MAX } from '../game/constants'
+import {
+  DAY_LENGTH_SEC,
+  HUNTS_TO_WARRIOR,
+  NEED_MAX,
+  RIVAL_START_HEALTH,
+} from '../game/constants'
 import { clockString, phaseName, wrapTime } from '../world/daylight'
 import { input, setActionHeld } from '../input/useTouchInput'
 
@@ -44,6 +54,8 @@ export const debugHooks: {
   juice?: () => Record<string, unknown>
   /** Turns the juice pass off live, to A/B it against the raw clips. */
   setJuice?: (on: boolean) => void
+  /** The rival's live state, read off `live` rather than the store. */
+  rival?: () => Record<string, unknown>
 } = {}
 
 export interface GameBridge {
@@ -57,7 +69,16 @@ export interface GameBridge {
   load: () => boolean
   reset: () => void
   setHunger: (v: number) => void
-  setHealth: (v: number) => void
+  /** `setHealth(40)` hurts the player; `setHealth(40, 12)` sets up a duel
+   *  she is about to win. The second argument is the spec's addition and the
+   *  one-argument form still behaves exactly as it always did. */
+  setHealth: (player: number, enemy?: number) => void
+  startDuel: (dist?: number) => void
+  endDuel: () => void
+  forceMove: (move: string) => boolean
+  forceEnemyMove: (move: string) => boolean
+  setDistance: (n: number) => void
+  duel: () => Record<string, unknown>
   prey: () => unknown[]
   spawnPreyNear: (dist?: number) => number
   input: typeof input
@@ -189,9 +210,65 @@ export function installBridge() {
     setHunger: (v) => {
       live.hunger = clamp(v, 0, NEED_MAX)
     },
-    setHealth: (v) => {
-      live.health = clamp(v, 0, NEED_MAX)
+    setHealth: (player, enemy) => {
+      live.health = clamp(player, 0, NEED_MAX)
+      if (typeof enemy === 'number') live.rival.health = clamp(enemy, 0, NEED_MAX)
     },
+
+    /**
+     * Put a rival at `dist` metres dead ahead and open a duel, without walking
+     * anywhere. Returns nothing useful; read __game.duel() afterwards.
+     *
+     * The rival is placed in front of the CAT's heading rather than the
+     * camera's, so a forced move fired straight afterwards is inside the
+     * forward arc and the reach test is testing reach rather than aim.
+     */
+    startDuel: (dist = 3) => {
+      const r = live.rival
+      r.active = true
+      r.health = RIVAL_START_HEALTH
+      live.duel.rematchT = 0
+      live.duel.fleeing = false
+      r.fleeT = 0
+      placeRival(dist)
+      useGame.getState().startDuel()
+      return undefined as unknown as void
+    },
+
+    endDuel: () => useGame.getState().endDuel('fled'),
+
+    /** Stage a move without a button. Returns false if she is not neutral,
+     *  which is the same answer a real tap would have got. */
+    forceMove: (move: string) => forceOn(live.cat.duel, move, 'player'),
+    forceEnemyMove: (move: string) => forceOn(live.rival.duel, move, 'rival'),
+
+    /** Exact gap for reach testing. Keeps the rival on the cat's heading so
+     *  only distance is under test, never the arc. */
+    setDistance: (n: number) => placeRival(n),
+
+    duel: () => ({
+      active: live.duel.active,
+      inRange: live.duel.inRange,
+      gap: round2(live.duel.gap),
+      fleeing: live.duel.fleeing,
+      endT: round2(live.duel.endT),
+      rematchT: round2(live.duel.rematchT),
+      lock: round2(live.duel.lock),
+      camDist: round2(live.camera.dist),
+      stage: useGame.getState().duelActive ? 'active' : 'idle',
+      outcome: useGame.getState().duelOutcome,
+      duelCount: useGame.getState().duelCount,
+      player: {
+        health: round2(live.health),
+        phase: live.cat.duel.phase,
+        move: live.cat.duel.move ?? 'none',
+        phaseT: round2(live.cat.duel.phaseT),
+        action: live.cat.action,
+        speed: round2(live.cat.speed),
+        locked: live.cat.duel.phase !== 'neutral',
+      },
+      rival: debugHooks.rival?.() ?? { active: false },
+    }),
     prey: () => debugHooks.dumpPrey?.() ?? [],
     spawnPreyNear: (dist = 4) => debugHooks.forcePreyNear?.(dist) ?? -1,
 
@@ -266,6 +343,10 @@ export function installBridge() {
           meow: () => playMeow(),
           meowHungry: () => playMeow(true),
           pounce: playPounce,
+          swipe: playSwipe,
+          kick: playKick,
+          impact: playImpact,
+          whiff: playWhiff,
           catch: playCatch,
           ceremony: playCeremony,
           tick: playTick,
@@ -309,6 +390,37 @@ export function attachStepToBridge(step: (count: number, dt: number) => number) 
   const w = window as unknown as { __game?: Record<string, unknown> }
   if (!w.__game) return
   w.__game.step = (count = 60, dt = 1 / 60) => step(count, dt)
+}
+
+/**
+ * Place the rival exactly `dist` metres along the cat's own heading, on the
+ * ground, facing back at her. Uses the CAT's yaw and not the camera's on
+ * purpose: a reach test staged off the camera would silently be an arc test as
+ * soon as the orbit drifted, and every "reach is wrong" result would be a lie.
+ */
+function placeRival(dist: number) {
+  const cat = live.cat
+  const fx = -Math.sin(cat.yaw)
+  const fz = -Math.cos(cat.yaw)
+  const x = cat.pos.x + fx * dist
+  const z = cat.pos.z + fz * dist
+  live.rival.pos.set(x, groundHeightAt(x, z), z)
+  live.rival.vel.set(0, 0, 0)
+  live.rival.speed = 0
+  live.rival.yaw = cat.yaw + Math.PI
+  live.duel.gap = dist
+}
+
+function forceOn(c: Combatant, move: string, who: string) {
+  if (move !== 'swipe' && move !== 'pounce' && move !== 'jumpkick') {
+    // eslint-disable-next-line no-console
+    console.warn(`[duel] no such move: ${move}`)
+    return false
+  }
+  const ok = startMove(c, move)
+  // eslint-disable-next-line no-console
+  if (!ok) console.warn(`[duel] ${who} is ${c.phase}, not neutral -- move refused`)
+  return ok
 }
 
 function round2(v: number) {

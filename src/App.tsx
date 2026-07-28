@@ -10,6 +10,7 @@ import { Camp } from './world/Camp'
 import { Fireflies } from './world/Fireflies'
 import { Lighting } from './world/Lighting'
 import { PlayerCat } from './actors/PlayerCat'
+import { RivalCat } from './actors/RivalCat'
 import { Prey } from './actors/Prey'
 import { FollowCamera } from './actors/FollowCamera'
 import { Hud } from './hud/Hud'
@@ -46,6 +47,10 @@ export function App() {
               order, and the mice read live.cat.crouched the same frame it is set.
               Reversed, stalking was always one frame stale and spooked them. */}
           <PlayerCat />
+          {/* After PlayerCat: she reads live.cat this frame and resolves her
+              strike against it, and on a tie the player's strike lands first,
+              which is the right direction for a 10-year-old to be wrong in. */}
+          <RivalCat />
           <Prey />
         </Suspense>
         <FollowCamera />

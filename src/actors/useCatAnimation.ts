@@ -19,8 +19,10 @@ import { DEBUG } from '../debug/expose'
  * ("Walk") from the Blender exporter and armature-prefixed names
  * ("AnimalArmature|Walk") from the FBX pipeline. Suffix matching handles both.
  *
- * Attack and Death exist in the pack and are deliberately never resolved.
- * See the content policy in CLAUDE.md.
+ * Death exists in the pack and is deliberately never resolved: nothing in this
+ * game kills a cat. Attack and the two HitReacts ARE bound, for the duel only,
+ * where a swing and a flinch are the whole of how a hit reads. Injury stays a
+ * number on a health bar. See the content policy in CLAUDE.md.
  */
 const WANTED = {
   idle: 'Idle',
@@ -30,9 +32,23 @@ const WANTED = {
   pounce: 'Gallop_Jump',
   eat: 'Eating',
   rest: 'Idle_2',
+  swipe: 'Attack',
+  hit: 'Idle_HitReact1',
+  stagger: 'Idle_HitReact2',
 } as const
 
 type Slot = keyof typeof WANTED
+
+/**
+ * Actions that borrow another slot's clip instead of getting one of their own.
+ *
+ * The jump-kick wants Gallop_Jump, and so does the pounce. Giving it its own
+ * WANTED entry would resolve to the same clip, and mixer.clipAction() returns
+ * the SAME AnimationAction for the same clip on the same root — so the two
+ * slots would share one action and fight over its weight every frame, one
+ * setting it to 1 and the other to 0 depending on Object.keys order.
+ */
+const ALIAS: Partial<Record<CatAction, Slot>> = { kick: 'pounce' }
 
 /** Slots that blend continuously with speed rather than switching. */
 const LOCOMOTION: Slot[] = ['idle', 'walk', 'run']
@@ -126,7 +142,7 @@ export function useCatAnimation(
             wRun = t
           }
         } else {
-          oneShot = action as Slot
+          oneShot = ALIAS[action] ?? (action as Slot)
           // Crouch keeps a little walk under it so stalking still has footfalls.
           if (action === 'crouch' && speed > 0.05) {
             wWalk = clamp(speed / CAT_WALK_SPEED, 0, 1) * 0.45

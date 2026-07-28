@@ -146,3 +146,46 @@ export const LANDMARK_ENTRIES = [
 export function landmarkToast(id: number): string {
   return `You found ${LANDMARK_NAMES[id]}.\n${LANDMARK_ENTRIES[id]}`
 }
+
+// --- Combat -----------------------------------------------------------------
+// A rival warrior from another Clan, over the border where she should not be.
+// She is chased off, never beaten down: nobody is hurt beyond a number on a
+// bar, nobody dies, and there is not one taunt in here. Every line is a beat in
+// a scuffle between two cats who both go home afterwards.
+
+export const RIVAL_NAME = 'Ripplefoot'
+
+/** Button faces. Short enough to read on a 96px circle at arm's length. */
+export const FIGHT_LABEL = 'Fight'
+export const MOVE_LABEL_SWIPE = 'Swipe'
+export const MOVE_LABEL_POUNCE = 'Pounce'
+export const MOVE_LABEL_JUMPKICK = 'Jump-kick'
+export const MOVE_LABEL_FLEE = 'Run away'
+
+export function duelStartToast(name: string): string {
+  return `${name} blocks the path.`
+}
+
+/** She yields and runs. Picked by hunt count so it varies without a coin flip. */
+export const DUEL_WIN_LINES = [
+  'yields and slips away over the border.',
+  'has had enough. Off she goes.',
+  'backs off, tail low. The territory holds.',
+  'turns and runs for the stream.',
+] as const
+
+export function duelWinToast(name: string, n: number): string {
+  return `${name} ${DUEL_WIN_LINES[Math.abs(n) % DUEL_WIN_LINES.length]}`
+}
+
+/** Losing costs nothing but the moment. No lost ground, no lost progress. */
+export const DUEL_LOSS_LINES = [
+  'You back away. Not today.',
+  'You give ground and shake out your fur.',
+  'Enough. You let her have the clearing.',
+] as const
+
+export const DUEL_FLEE_LINES = [
+  'You slip away into the ferns.',
+  'You break off and run.',
+] as const

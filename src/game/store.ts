@@ -7,21 +7,30 @@ import {
   DEFAULT_PREFIX,
   CREATE_CAM_START_YAW,
   DAY_START_T,
+  DUEL_LOSS_HEALTH_FLOOR,
+  DUEL_REMATCH_DELAY,
   EYE_COLORS,
   HUNTS_TO_WARRIOR,
   NEED_MAX,
   PELTS,
+  RIVAL_FLEE_TIME,
   SAVE_KEY,
   TOAST_DURATION,
   TOAST_DURATION_LONG,
 } from './constants'
 import {
   APPRENTICE_SUFFIX,
+  DUEL_FLEE_LINES,
+  DUEL_LOSS_LINES,
   NAME_PREFIXES,
+  RIVAL_NAME,
   WARRIOR_SUFFIXES,
+  duelStartToast,
+  duelWinToast,
   landmarkToast,
   nameToast,
 } from '../content/lines'
+import { resetCombatant } from './duel'
 import { live, resetLive } from './live'
 import { LANDMARK_ALL_MASK, isDiscovered, withDiscovered } from './landmarks'
 import { resetNeedEdges } from './needs'
@@ -32,6 +41,9 @@ import { groundHeightAt } from './terrain'
 import { wrapTime } from '../world/daylight'
 
 export type Phase = 'title' | 'create' | 'playing'
+
+/** How a duel ended. 'lost' costs nothing but the moment; see endDuel. */
+export type DuelOutcome = 'none' | 'won' | 'lost' | 'fled'
 
 export interface Toast {
   id: number
@@ -148,6 +160,26 @@ interface GameState {
   promote: () => void
   endCeremony: () => void
   discover: (id: number) => void
+
+  /**
+   * Duel state, deliberately coarse. Everything that ticks — each cat's phase,
+   * its timer, the active move, both health values — lives on `live` and is
+   * read by useFrame and by the HUD's rAF loop instead. A store write per phase
+   * transition would re-render the HUD around eight times a second for nothing,
+   * and R3F rule 1 in CLAUDE.md exists precisely to stop that.
+   *
+   * This is the one place the combat spec is not followed literally: it says
+   * health, phase, move and timer live in the store, one sentence before saying
+   * the timers tick on refs inside useFrame. The refs win.
+   */
+  duelActive: boolean
+  duelId: number
+  duelOutcome: DuelOutcome
+  /** Monotonic. Only ever an edge source for the audio driver. */
+  duelCount: number
+  startDuel: () => void
+  endDuel: (outcome: DuelOutcome) => void
+
   showToast: (text: string, duration?: number) => void
   clearToast: (id: number) => void
   setSeed: (n: number) => void
@@ -159,6 +191,13 @@ interface GameState {
 
 let toastId = 0
 let ceremonyId = 0
+let duelId = 0
+
+/** Rotate through a line set by a counter, so repeats are spread out rather
+ *  than random. Same shape as the pick() helpers in PlayerCat. */
+function pickLine(lines: readonly string[], n: number): string {
+  return lines[Math.abs(Math.floor(n)) % lines.length]
+}
 
 export const useGame = create<GameState>((set, get) => ({
   phase: 'title',
@@ -171,6 +210,10 @@ export const useGame = create<GameState>((set, get) => ({
   identityChosen: false,
   pendingCeremony: false,
   ceremony: null,
+  duelActive: false,
+  duelId: 0,
+  duelOutcome: 'none',
+  duelCount: 0,
 
   // The title tap is also the audio-unlock gesture, so the save is read here
   // rather than later: by this point we know whether she already has a cat.
@@ -239,6 +282,61 @@ export const useGame = create<GameState>((set, get) => ({
   },
 
   endCeremony: () => set({ ceremony: null }),
+
+  // Entering a duel. Guarded on the rival actually being there and idle, so a
+  // stale Fight tap arriving a frame after she wandered out of range, or after
+  // a duel already started, cannot open a second one.
+  startDuel: () => {
+    if (!live.rival.active || live.duel.active || live.duel.rematchT > 0) return
+    resetCombatant(live.cat.duel)
+    resetCombatant(live.rival.duel)
+    live.duel.active = true
+    live.duel.fleeing = false
+    live.duel.endT = 0
+    live.rival.decideT = 0
+    live.rival.repositionT = 0
+    live.rival.fleeT = 0
+    duelId += 1
+    set((s) => ({
+      duelActive: true,
+      duelId,
+      duelOutcome: 'none',
+      duelCount: s.duelCount + 1,
+    }))
+    get().showToast(duelStartToast(RIVAL_NAME))
+  },
+
+  // Leaving one, by any of the three exits: she yields, you back off, or you
+  // run. Nobody dies and nothing is lost in any of them. Health is floored on a
+  // loss rather than left at zero, because a cat sitting on an empty bar would
+  // then starve-drain in needs.ts the moment the duel closed.
+  endDuel: (outcome) => {
+    if (!live.duel.active) return
+    live.duel.active = false
+    live.duel.fleeing = false
+    live.duel.endT = 0
+    live.duel.lock = 0
+    live.duel.rematchT = DUEL_REMATCH_DELAY
+    resetCombatant(live.cat.duel)
+    resetCombatant(live.rival.duel)
+    if (outcome === 'lost' && live.health < DUEL_LOSS_HEALTH_FLOOR) {
+      live.health = DUEL_LOSS_HEALTH_FLOOR
+    }
+    // She runs off on a win or a loss alike; on a flee she is left where she is
+    // and simply goes back to wandering her patch.
+    if (outcome !== 'fled') live.rival.fleeT = RIVAL_FLEE_TIME
+
+    const s = get()
+    set({ duelActive: false, duelOutcome: outcome })
+    if (outcome === 'won') {
+      get().showToast(duelWinToast(RIVAL_NAME, s.huntCount))
+    } else if (outcome === 'lost') {
+      get().showToast(pickLine(DUEL_LOSS_LINES, s.huntCount))
+    } else {
+      get().showToast(pickLine(DUEL_FLEE_LINES, s.huntCount))
+    }
+    get().save()
+  },
 
   showToast: (text, duration = TOAST_DURATION) => {
     toastId += 1
@@ -380,6 +478,12 @@ export const useGame = create<GameState>((set, get) => ({
       identityChosen: false,
       pendingCeremony: false,
       ceremony: null,
+      // resetLive has already put the rival back on her patch and closed any
+      // duel. duelCount is left alone for the same reason as discoverCount:
+      // rewinding it to 0 would make the next duel compare equal to the audio
+      // driver's tracker and swallow its cue.
+      duelActive: false,
+      duelOutcome: 'none',
       phase: 'title',
     })
   },
