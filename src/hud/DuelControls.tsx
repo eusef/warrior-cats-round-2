@@ -1,4 +1,4 @@
-import { useRef, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { DUEL_BUTTON_GAP, DUEL_BUTTON_SIZE } from '../game/constants'
 import {
   FIGHT_LABEL,
@@ -146,18 +146,41 @@ function DuelButton({
     e.preventDefault()
     if (heldPointer.current !== null) return
     heldPointer.current = e.pointerId
-    ref.current?.setPointerCapture(e.pointerId)
-    ref.current?.style.setProperty('transform', 'scale(0.92)')
     // Fires on press, not release. Every action gets feedback inside 100ms, and
     // waiting for the finger to lift adds however long she holds it for.
+    //
+    // Called BEFORE anything that can throw, and there is no setPointerCapture
+    // here for the same reason ActionButton no longer has one: it throws
+    // NotFoundError when iOS has already claimed the touch for a system
+    // gesture, which killed the tap and then every tap after it. On Run away
+    // that is the one failure this design exists to make impossible.
     onTap()
+    ref.current?.style.setProperty('transform', 'scale(0.92)')
   }
 
-  const release = (e: React.PointerEvent) => {
+  const release = (e: { pointerId: number }) => {
     if (heldPointer.current !== e.pointerId) return
     heldPointer.current = null
     ref.current?.style.setProperty('transform', 'scale(1)')
   }
+
+  // Same backstop as ActionButton, for the same reason: without it a missed
+  // pointerup leaves heldPointer set and the button refuses every later tap
+  // for the rest of the session. On Run away that is the one failure this
+  // whole design is meant to make impossible.
+  useEffect(() => {
+    const up = (e: PointerEvent) => {
+      if (heldPointer.current !== e.pointerId) return
+      heldPointer.current = null
+      ref.current?.style.setProperty('transform', 'scale(1)')
+    }
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [ref])
 
   return (
     <button

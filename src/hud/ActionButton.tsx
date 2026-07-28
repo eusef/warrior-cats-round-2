@@ -1,4 +1,4 @@
-import { RefObject, useCallback, useRef } from 'react'
+import { RefObject, useCallback, useEffect, useRef } from 'react'
 import { setActionHeld } from '../input/useTouchInput'
 
 interface Props {
@@ -20,18 +20,53 @@ export function ActionButton({ labelRef, btnRef }: Props) {
     e.stopPropagation()
     e.preventDefault()
     if (heldPointer.current !== null) return
+    // Engage FIRST, decorate after. setPointerCapture used to be called on the
+    // line above this one and it THROWS NotFoundError whenever the pointer is
+    // no longer active by the time the handler runs -- which on iOS is exactly
+    // what happens when the touch has already been claimed by a system gesture,
+    // and this button sits in the home-indicator strip along the bottom edge.
+    // The throw left heldPointer set but setActionHeld unreached, so the button
+    // was both dead on that tap and, because of the guard above, dead on every
+    // tap afterwards. That is the whole of "the Stalk button is hard to press".
+    //
+    // Capture is gone rather than wrapped: the window listener below catches
+    // the release wherever the finger lifts, which is the thing capture was
+    // for, and it cannot throw.
     heldPointer.current = e.pointerId
-    ref.current?.setPointerCapture(e.pointerId)
-    ref.current?.style.setProperty('transform', 'scale(0.92)')
     setActionHeld(true)
+    ref.current?.style.setProperty('transform', 'scale(0.92)')
   }, [])
 
-  const release = useCallback((e: React.PointerEvent) => {
+  const release = useCallback((e: { pointerId: number }) => {
     if (heldPointer.current !== e.pointerId) return
     heldPointer.current = null
     ref.current?.style.setProperty('transform', 'scale(1)')
     setActionHeld(false)
   }, [])
+
+  // The backstop, and it is not optional.
+  //
+  // The press guard above refuses a new touch while one is already held, and
+  // until this existed the ONLY things that cleared that were pointerup and
+  // pointercancel ON THE BUTTON. iOS Safari does not reliably deliver either:
+  // a thumb that slides off the circle mid-hold lifts somewhere else entirely,
+  // and WebKit releases pointer capture on its own often enough that the
+  // capture call cannot be trusted to bring the event back.
+  //
+  // Miss one release and heldPointer stays set for the rest of the session:
+  // the button is dead, and setActionHeld(true) stays latched so the cat is
+  // stuck crouching at CAT_CROUCH_SPEED_MULT with nothing on screen to say why.
+  // Listening on window is the same thing useTouchInput does for the joystick,
+  // and for the same reason.
+  useEffect(() => {
+    const up = (e: PointerEvent) => release(e)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [release])
 
   return (
     <button
