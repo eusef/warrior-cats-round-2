@@ -430,7 +430,8 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
 12. **Cat Models**(ignore for now). Need to update the models to look like cats.
 
-13. **Combat.** **BUILT, needs the iPad check.** Real-time positional duelling
+13. **Combat.** **BUILT. Touch confirmed on the iPad; framerate and the four
+    combat sounds still unchecked.** Real-time positional duelling
     against one wandering rival, built to `docs/specs/combat.md`. The rules are
     `src/game/duel.ts` as pure functions with no R3F, no store and no `live`
     import, so every one of them is assertable headlessly the same way
@@ -489,16 +490,27 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
     drove windup -> strike -> recovery for 8 damage without stealing the joystick
     or the orbit drag; zero console errors throughout.
 
-    **Not verified: the iPad.** Framerate is the real question, because this is
-    the first time two skinned, animated cats are on screen at once on top of the
-    beacon's transparent overdraw at dpr 2. **Also unverified by ear: all four
-    new combat voices** (swipe, kick, impact, whiff), which have never been
-    through a device mix check. The whiff in particular measured 4.7x below the
-    pounce because its Q-4 bandpass passes only about 250Hz of the noise buffer;
-    it is meant to be the quietest of the four, but whether 0.17 actually reads
-    as 0.17 on the iPad's speakers is a listen, not a calculation. And **the CPU
-    has never been watched by Mila**, which is the only test of whether it should
-    be smarter or dumber.
+    **Confirmed on the iPad: the touch controls.** Phil's words were "buttons
+    work well." That covers the four move buttons, Run away, the Fight prompt
+    and Stalk, under real fingers in real Safari, after two rounds of fixes it
+    took a device to find. The first was `setPointerCapture` throwing and
+    killing the button for the rest of the session; the second was the four
+    hidden move buttons still hit-testing on top of Stalk, which is why
+    `setShown` now exists and is the only way HUD chrome is hidden. Both are
+    written up in the iPad Safari rules and neither should be reintroduced.
+    `HUD_EDGE_MARGIN_Y = 72` is part of that result and is not a free number.
+
+    **Still not verified: framerate**, which is the real question, because this
+    is the first time two skinned, animated cats are on screen at once on top of
+    the beacon's transparent overdraw at dpr 2. Nothing about the button result
+    speaks to it: a HUD tap landing correctly says nothing about GPU headroom.
+    **Also still unverified by ear: all four new combat voices** (swipe, kick,
+    impact, whiff), which have never been through a device mix check. The whiff
+    in particular measured 4.7x below the pounce because its Q-4 bandpass passes
+    only about 250Hz of the noise buffer; it is meant to be the quietest of the
+    four, but whether 0.17 actually reads as 0.17 on the iPad's speakers is a
+    listen, not a calculation. And **the CPU has never been watched by Mila**,
+    which is the only test of whether it should be smarter or dumber.
 
 ## Commands
 
