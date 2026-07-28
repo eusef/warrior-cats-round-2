@@ -3,14 +3,17 @@ import { setActionHeld } from '../input/useTouchInput'
 
 interface Props {
   labelRef: RefObject<HTMLDivElement>
+  /** Lets the HUD's rAF loop hide the button during a duel. */
+  btnRef?: RefObject<HTMLButtonElement>
 }
 
 /**
  * One button, two verbs: hold to crouch and stalk, release to pounce.
  * 116px, well over the 44px touch minimum, sat above the home indicator.
  */
-export function ActionButton({ labelRef }: Props) {
-  const btnRef = useRef<HTMLButtonElement>(null)
+export function ActionButton({ labelRef, btnRef }: Props) {
+  const ownRef = useRef<HTMLButtonElement>(null)
+  const ref = btnRef ?? ownRef
   const heldPointer = useRef<number | null>(null)
 
   const press = useCallback((e: React.PointerEvent) => {
@@ -18,21 +21,21 @@ export function ActionButton({ labelRef }: Props) {
     e.preventDefault()
     if (heldPointer.current !== null) return
     heldPointer.current = e.pointerId
-    btnRef.current?.setPointerCapture(e.pointerId)
-    btnRef.current?.style.setProperty('transform', 'scale(0.92)')
+    ref.current?.setPointerCapture(e.pointerId)
+    ref.current?.style.setProperty('transform', 'scale(0.92)')
     setActionHeld(true)
   }, [])
 
   const release = useCallback((e: React.PointerEvent) => {
     if (heldPointer.current !== e.pointerId) return
     heldPointer.current = null
-    btnRef.current?.style.setProperty('transform', 'scale(1)')
+    ref.current?.style.setProperty('transform', 'scale(1)')
     setActionHeld(false)
   }, [])
 
   return (
     <button
-      ref={btnRef}
+      ref={ref}
       className="no-touch-scroll"
       onPointerDown={press}
       onPointerUp={release}

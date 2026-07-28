@@ -1,4 +1,5 @@
 import { startMove, type Combatant } from '../game/duel'
+import { logMove } from './duelLog'
 import { live, resetLive } from '../game/live'
 import {
   audioCounts,
@@ -411,15 +412,19 @@ function placeRival(dist: number) {
   live.duel.gap = dist
 }
 
-function forceOn(c: Combatant, move: string, who: string) {
+function forceOn(c: Combatant, move: string, who: 'player' | 'rival') {
   if (move !== 'swipe' && move !== 'pounce' && move !== 'jumpkick') {
     // eslint-disable-next-line no-console
     console.warn(`[duel] no such move: ${move}`)
     return false
   }
   const ok = startMove(c, move)
+  // Logged here as well as in the actors: a forced move goes straight into the
+  // machine and never passes the button path, so without this line a staged
+  // move is invisible in the log and only its outcome shows up.
+  if (ok) logMove(who, move, live.duel.gap, false, 0, 'windup (forced)', live.health, live.rival.health)
   // eslint-disable-next-line no-console
-  if (!ok) console.warn(`[duel] ${who} is ${c.phase}, not neutral -- move refused`)
+  else console.warn(`[duel] ${who} is ${c.phase}, not neutral -- move refused`)
   return ok
 }
 

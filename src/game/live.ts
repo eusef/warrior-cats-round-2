@@ -115,6 +115,9 @@ export const live = {
     rematchT: 0,
     /** 0..1 blend of the soft lock-on, eased so the camera never snaps. */
     lock: 0,
+    /** Monotonic count of strikes that connected with nothing. An edge source
+     *  for the whiff cue: a miss that makes no sound reads as a dead button. */
+    whiffs: 0,
   },
 
   camera: {
@@ -207,6 +210,9 @@ export function resetRival() {
   live.duel.endT = 0
   live.duel.rematchT = 0
   live.duel.lock = 0
+  // whiffs is deliberately not reset, for the same reason discoverCount is not:
+  // rewinding it would make the next miss compare equal to the audio driver's
+  // tracker and swallow the cue.
 }
 
 function clamp01to(v: number) {

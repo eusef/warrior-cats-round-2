@@ -28,9 +28,13 @@ import {
   playCatch,
   playCeremony,
   playChirp,
+  playImpact,
+  playKick,
   playMeow,
   playOwl,
   playPounce,
+  playSwipe,
+  playWhiff,
   playStep,
   playTick,
   startCrickets,
@@ -67,6 +71,13 @@ export function AudioDriver() {
     pelt: -1,
     eyes: -1,
     prefix: -1,
+    // Combat trackers. The two swing keys are '' when nobody is mid-move.
+    playerSwing: '' as string,
+    rivalSwing: '' as string,
+    playerHitT: 0,
+    rivalHitT: 0,
+    whiffs: 0,
+    duelCount: 0,
     /** Has the cat said hello this play session? See the greeting below. */
     greeted: false,
     /** 0..1 through the current stride. Crossing 1 places a paw. */
@@ -103,6 +114,28 @@ export function AudioDriver() {
     }
 
     if (cat.pounceT > 0 && t.pounceT <= 0) playPounce()
+
+    // --- combat -------------------------------------------------------------
+    // One sting per move, at the START of the wind-up rather than at the hit,
+    // so the button answers inside 100ms whether or not the swing connects.
+    // The rival's moves sound too: a silent attacker reads as broken, and the
+    // wind-up is the only warning that a jump-kick is coming.
+    swingCue(live.cat.duel.move, live.cat.duel.phase, t.playerSwing)
+    swingCue(live.rival.duel.move, live.rival.duel.phase, t.rivalSwing)
+    t.playerSwing = swingKey(live.cat.duel.move, live.cat.duel.phase)
+    t.rivalSwing = swingKey(live.rival.duel.move, live.rival.duel.phase)
+
+    // hitT only ever rises on the frame damage lands, on either cat, which
+    // makes watching its rising edge the contact itself. Same trick as eatT.
+    if (live.cat.duel.hitT > 0 && t.playerHitT <= 0) playImpact()
+    if (live.rival.duel.hitT > 0 && t.rivalHitT <= 0) playImpact()
+
+    // And a miss has to sound like a miss.
+    if (live.duel.whiffs !== t.whiffs) playWhiff()
+
+    // A challenge yowl on entering a duel, reusing the meow rather than adding
+    // a sixth voice. It is the cat's own voice and it is already mixed.
+    if (g.duelCount !== t.duelCount) playMeow()
 
     // eatT only ever rises when a pounce connected. This is the catch.
     if (cat.eatT > 0 && t.eatT <= 0) playCatch()
@@ -205,6 +238,12 @@ export function AudioDriver() {
 
 type Tracked = {
   phase: string
+  playerSwing: string
+  rivalSwing: string
+  playerHitT: number
+  rivalHitT: number
+  whiffs: number
+  duelCount: number
   pounceT: number
   eatT: number
   hunger: number
@@ -217,6 +256,12 @@ type Tracked = {
 
 function sync(t: Tracked, g: ReturnType<typeof useGame.getState>) {
   t.phase = g.phase
+  t.playerSwing = swingKey(live.cat.duel.move, live.cat.duel.phase)
+  t.rivalSwing = swingKey(live.rival.duel.move, live.rival.duel.phase)
+  t.playerHitT = live.cat.duel.hitT
+  t.rivalHitT = live.rival.duel.hitT
+  t.whiffs = live.duel.whiffs
+  t.duelCount = g.duelCount
   t.pounceT = live.cat.pounceT
   t.eatT = live.cat.eatT
   t.hunger = live.hunger
@@ -225,6 +270,21 @@ function sync(t: Tracked, g: ReturnType<typeof useGame.getState>) {
   t.pelt = g.identity.pelt
   t.eyes = g.identity.eyes
   t.prefix = g.identity.prefix
+}
+
+/** '' when nobody is swinging, otherwise the move being thrown. Comparing this
+ *  against last frame's value is the rising edge of a swing, and it correctly
+ *  refuses to re-fire when a move rolls windup -> strike -> recovery. */
+function swingKey(move: string | null, phase: string): string {
+  return move && phase !== 'neutral' ? move : ''
+}
+
+function swingCue(move: string | null, phase: string, prev: string) {
+  const key = swingKey(move, phase)
+  if (key === '' || key === prev) return
+  if (key === 'swipe') playSwipe()
+  else if (key === 'pounce') playPounce()
+  else playKick()
 }
 
 /**

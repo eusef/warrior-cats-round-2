@@ -116,6 +116,20 @@ entire difference: by day it sets `visible = false` and returns before its
 transform loop, so it costs one comparison and no draw call for roughly two
 thirds of the cycle.
 
+Raised from 17 to 22 for the rival cat. This one is not a shader trick, it is
+just a second cat: `PlayerCat` clones all five GLB materials per cat so that
+recolouring one never tints the other, and the rival has to be a visibly
+different animal from whatever pelt Mila picked or the two are unreadable in a
+scuffle at arm's length. Five materials is the honest price of that and there is
+no way to pay less of it without the two cats sharing a colour.
+
+Measured in Chrome at 1180x806, dpr 2, with both cats in frame and a duel
+running: **22 unique materials, 25 draw calls and 44.6k triangles, holding 60fps.**
+Draw calls went 13-18 to 25 and triangles moved by under 2k, so the only budget
+line this actually moves is the material count. She is one cat, not a system:
+adding a second rival would cost another five, and at that point the materials
+should be shared rather than cloned.
+
 ## Assets
 
 Quaternius CC0 low-poly packs in `public/models/`, `.glb` format. There is no cat model in the pack: the Fox rig is the stand-in cat, recolored per character. Do not spend a session trying to model a cat. Do not generate placeholder cubes either, the fox is already there.
@@ -384,6 +398,76 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 10. **Photo mode(ignore for now).** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
 11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
 12. **Cat Models**(ignore for now). Need to update the models to look like cats.
+
+13. **Combat.** **BUILT, needs the iPad check.** Real-time positional duelling
+    against one wandering rival, built to `docs/specs/combat.md`. The rules are
+    `src/game/duel.ts` as pure functions with no R3F, no store and no `live`
+    import, so every one of them is assertable headlessly the same way
+    `landmarks.ts` is. `src/actors/RivalCat.tsx` is the second cat and owns all
+    the duel bookkeeping the player half does not.
+
+    **Six things that will bite whoever touches this next.**
+
+    **`Attack`, `Idle_HitReact1` and `Idle_HitReact2` are now bound**, reversing
+    an exclusion that was documented in two files. Phil approved it explicitly.
+    **`Death` is still never bound and never will be.** The line the content
+    policy actually draws is at death and gore, not at a swing and a flinch, and
+    injury is still only a number on a bar.
+
+    **The jump-kick is aliased onto the pounce slot, not given its own.** Both
+    want `Gallop_Jump`, and `mixer.clipAction()` returns the SAME
+    `AnimationAction` for one clip on one root, so two slots would share a single
+    action and fight over its weight every frame depending on `Object.keys`
+    order. `ALIAS` in `useCatAnimation` exists solely for this.
+
+    **Per-cat phase, move, timer and both health values live on `live`, not the
+    store.** This is the one place the spec is not followed literally: it says
+    they live in the store one sentence before saying the timers tick on refs
+    inside `useFrame`. A store write per phase transition re-renders the HUD
+    about eight times a second. The store keeps only `duelActive`/`duelOutcome`/
+    `duelCount`, which change about three times per duel.
+
+    **Reach is tested at the END of the wind-up, before the lunge travels.** That
+    single ordering is what makes "the rival backed off during the wind-up" an
+    honest miss instead of a hit that catches up, and it is why `advance()`
+    returns the `'strike'` transition rather than letting callers poll the phase.
+
+    **`applyHit` is the only place the interrupt rule lives.** A hit during a
+    wind-up moves the phase to `stagger`, and the cancelled strike then simply
+    cannot resolve, because a strike only ever fires on the windup -> strike
+    transition. There is no second flag to keep in sync.
+
+    **Save is untouched at v5.** A duel deliberately does not persist; health
+    already did. `load()` calls `resetRival()` anyway.
+
+    Verified in Chrome at a true 1180x806, dpr 2, driven under `__game.step()`
+    at a fixed dt: clip names read off the GLB at runtime and all ten slots bound
+    on both cats with zero unresolved; reach flips exactly at each move's
+    boundary (swipe 8 dmg at 2.05m / 0 at 2.35m, pounce 16/0 at 3.55/3.85,
+    jump-kick 30/0 at 5.05/5.35); a swipe into a jump-kick's wind-up leaves the
+    kick dealing 0 and the player in `stagger` while the swipe still lands its 8;
+    phase durations exactly 72/18/42 frames against the constants; joystick at
+    full deflection gives 7.0 m/s in neutral and exactly 0 through wind-up and
+    recovery; lunges travel 0.00 / 2.00 / 2.99m against constants of 0 / 2.0 /
+    3.0; both cats stayed in frame across all 72 samples of a full circle with a
+    max camera move of 0.27m in a frame; flee closes instantly when the rival is
+    not mid-strike and at 15.07m when she is, and works mid-wind-up; a 49-second
+    unscripted fight ran to a loss with health floored at 35 and hunts, position
+    and name all intact; ten skinned meshes with ten distinct skeletons; save v5
+    round-trip plus v1 migration and v9 rejection; a real trusted tap on SWIPE
+    drove windup -> strike -> recovery for 8 damage without stealing the joystick
+    or the orbit drag; zero console errors throughout.
+
+    **Not verified: the iPad.** Framerate is the real question, because this is
+    the first time two skinned, animated cats are on screen at once on top of the
+    beacon's transparent overdraw at dpr 2. **Also unverified by ear: all four
+    new combat voices** (swipe, kick, impact, whiff), which have never been
+    through a device mix check. The whiff in particular measured 4.7x below the
+    pounce because its Q-4 bandpass passes only about 250Hz of the noise buffer;
+    it is meant to be the quietest of the four, but whether 0.17 actually reads
+    as 0.17 on the iPad's speakers is a listen, not a calculation. And **the CPU
+    has never been watched by Mila**, which is the only test of whether it should
+    be smarter or dumber.
 
 ## Commands
 

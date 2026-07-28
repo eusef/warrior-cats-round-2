@@ -1,9 +1,17 @@
 import { useEffect, useRef } from 'react'
-import { HUNGER_LOW_THRESHOLD, NEED_MAX } from '../game/constants'
+import {
+  HEALTH_BAR_EASE,
+  HUNGER_LOW_THRESHOLD,
+  NEED_MAX,
+  RIVAL_START_HEALTH,
+} from '../game/constants'
+import { RIVAL_NAME } from '../content/lines'
+import { DEBUG } from '../debug/expose'
 import { live } from '../game/live'
 import { useGame } from '../game/store'
 import { input, useTouchInput } from '../input/useTouchInput'
 import { ActionButton } from './ActionButton'
+import { DuelControls } from './DuelControls'
 import { Joystick } from './Joystick'
 
 /**
@@ -27,20 +35,62 @@ export function Hud() {
   const stickKnob = useRef<HTMLDivElement>(null)
   const actionLabel = useRef<HTMLDivElement>(null)
   const vignette = useRef<HTMLDivElement>(null)
+  const rivalPill = useRef<HTMLDivElement>(null)
+  const rivalFill = useRef<HTMLDivElement>(null)
+  const fightBtn = useRef<HTMLButtonElement>(null)
+  const moveGrid = useRef<HTMLDivElement>(null)
+  const actionBtn = useRef<HTMLButtonElement>(null)
 
   useTouchInput(layerRef)
 
   useEffect(() => {
     let raf = 0
     let lastLabel = ''
+    let lastT = performance.now()
+    // What the bars are DRAWING, chasing what the game says. A hit takes 30
+    // points off in one frame, and a bar that jump-cuts reads as a glitch
+    // rather than as damage. Purely presentational, so it lives here in the
+    // HUD and never touches `live`.
+    let shownHealth = live.health
+    let shownRival = live.rival.health
 
-    const tick = () => {
+    const tick = (now: number) => {
       raf = requestAnimationFrame(tick)
+      const dt = Math.min(0.05, Math.max(0, (now - lastT) / 1000))
+      lastT = now
+      const k = 1 - Math.exp(-HEALTH_BAR_EASE * dt)
+      shownHealth += (live.health - shownHealth) * k
+      shownRival += (live.rival.health - shownRival) * k
 
-      const h = live.health / NEED_MAX
+      const h = shownHealth / NEED_MAX
       const f = live.hunger / NEED_MAX
       if (healthFill.current) healthFill.current.style.transform = `scaleX(${h})`
       if (hungerFill.current) hungerFill.current.style.transform = `scaleX(${f})`
+      if (rivalFill.current) {
+        rivalFill.current.style.transform = `scaleX(${Math.max(0, shownRival / RIVAL_START_HEALTH)})`
+      }
+
+      // Duel chrome. All of it is driven from `live` here rather than from the
+      // store, so walking in and out of range costs zero React re-renders.
+      const duelling = live.duel.active
+      if (rivalPill.current) {
+        rivalPill.current.style.opacity = duelling ? '1' : '0'
+      }
+      if (fightBtn.current) {
+        const show = live.duel.inRange
+        fightBtn.current.style.opacity = show ? '1' : '0'
+        fightBtn.current.style.pointerEvents = show ? 'auto' : 'none'
+      }
+      if (moveGrid.current) {
+        moveGrid.current.style.opacity = duelling ? '1' : '0'
+        moveGrid.current.style.pointerEvents = duelling ? 'auto' : 'none'
+      }
+      if (actionBtn.current) {
+        // No stalking mice mid-fight. Hidden rather than disabled: a dead
+        // button she can still press is worse than one that is not there.
+        actionBtn.current.style.opacity = duelling ? '0' : '1'
+        actionBtn.current.style.pointerEvents = duelling ? 'none' : 'auto'
+      }
 
       // Low hunger pulses the pill and dims the screen edge. Readable across a room.
       const low = live.hunger <= HUNGER_LOW_THRESHOLD
@@ -122,8 +172,43 @@ export function Hud() {
             <NeedBar icon="🐭" color="#e0a038" fillRef={hungerFill} pillRef={hungerPill} />
           </div>
 
+          {/* The opponent bar, mirrored into the opposite corner so the two are
+              never confusable, and faded in only while a duel is running. */}
+          <div
+            ref={rivalPill}
+            style={{
+              position: 'fixed',
+              // Dropped clear of the debug overlay, which owns the top-right
+              // corner under ?debug=1. Her build has no overlay and gets the
+              // corner, mirroring the player's bars in the opposite one.
+              top: DEBUG ? 'calc(262px + var(--safe-top))' : 'calc(18px + var(--safe-top))',
+              right: 'calc(20px + var(--safe-right))',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 4,
+              pointerEvents: 'none',
+              opacity: 0,
+              transition: 'opacity 220ms ease-out',
+              zIndex: 25,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: '0.04em',
+                textShadow: '0 2px 4px rgba(0,0,0,0.7)',
+              }}
+            >
+              {RIVAL_NAME}
+            </div>
+            <NeedBar icon="🐱" color="#b96be0" fillRef={rivalFill} mirrored />
+          </div>
+
           <Joystick baseRef={stickBase} knobRef={stickKnob} />
-          <ActionButton labelRef={actionLabel} />
+          <ActionButton labelRef={actionLabel} btnRef={actionBtn} />
+          <DuelControls fight={fightBtn} moves={moveGrid} />
         </>
       )}
 
@@ -137,11 +222,21 @@ interface NeedBarProps {
   color: string
   fillRef: React.RefObject<HTMLDivElement>
   pillRef?: React.RefObject<HTMLDivElement>
+  /** Icon on the right and the bar draining rightward, for the opposite corner. */
+  mirrored?: boolean
 }
 
-function NeedBar({ icon, color, fillRef, pillRef }: NeedBarProps) {
+function NeedBar({ icon, color, fillRef, pillRef, mirrored }: NeedBarProps) {
   return (
-    <div ref={pillRef} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+    <div
+      ref={pillRef}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexDirection: mirrored ? 'row-reverse' : 'row',
+      }}
+    >
       <div
         style={{
           fontSize: 26,
@@ -169,7 +264,7 @@ function NeedBar({ icon, color, fillRef, pillRef }: NeedBarProps) {
             width: '100%',
             height: '100%',
             background: color,
-            transformOrigin: 'left center',
+            transformOrigin: mirrored ? 'right center' : 'left center',
             transform: 'scaleX(1)',
             borderRadius: 10,
           }}

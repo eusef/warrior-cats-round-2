@@ -31,7 +31,7 @@ import {
   nameToast,
 } from '../content/lines'
 import { resetCombatant } from './duel'
-import { live, resetLive } from './live'
+import { live, resetLive, resetRival } from './live'
 import { LANDMARK_ALL_MASK, isDiscovered, withDiscovered } from './landmarks'
 import { resetNeedEdges } from './needs'
 import { DEFAULT_SEED } from './rng'
@@ -444,6 +444,11 @@ export const useGame = create<GameState>((set, get) => ({
     )
     live.cat.yaw = numOr(blob.yaw, 0)
     live.cat.vel.set(0, 0, 0)
+    // A duel never survives a load. Unreachable in the real game -- the only
+    // route back to the title is reset(), which already does this -- but a
+    // half-open duel restored under a fresh cat would be a genuinely confusing
+    // thing to debug, and closing it is one line.
+    resetRival()
     // Wrapped rather than trusted: a hand-edited or drifted blob outside [0, 1)
     // would otherwise put the sun somewhere the palette never keys.
     live.timeOfDay = wrapTime(numOr(blob.tod, DAY_START_T))

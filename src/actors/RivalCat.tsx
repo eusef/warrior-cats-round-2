@@ -203,6 +203,7 @@ export function RivalCat() {
         live.health = res.health
         logMove('rival', r.duel.move, gap, true, m.damage, res.result, live.health, r.health)
       } else {
+        live.duel.whiffs += 1
         logMove('rival', r.duel.move, gap, false, 0, 'miss', live.health, r.health)
       }
     }

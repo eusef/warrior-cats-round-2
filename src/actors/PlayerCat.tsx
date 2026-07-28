@@ -233,6 +233,7 @@ export function PlayerCat() {
           r.health = res.health
           logMove('player', cat.duel.move, duel.gap, true, m.damage, res.result, live.health, r.health)
         } else {
+          live.duel.whiffs += 1
           logMove('player', cat.duel.move, duel.gap, false, 0, 'miss', live.health, live.rival.health)
         }
       }
