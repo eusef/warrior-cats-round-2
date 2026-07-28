@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { JOYSTICK_DEADZONE, JOYSTICK_RADIUS } from '../game/constants'
+import { DOUBLE_TAP_MS, JOYSTICK_DEADZONE, JOYSTICK_RADIUS } from '../game/constants'
 
 /**
  * The single source of truth for input. One module-level mutable object that
@@ -203,6 +203,44 @@ export function useTouchInput(layerRef: React.RefObject<HTMLElement>) {
     const onKeyDown = onKey(true)
     const onKeyUp = onKey(false)
 
+    // --- Safari's own gestures ---------------------------------------------
+    //
+    // The viewport meta in index.html asks for maximum-scale=1 and
+    // user-scalable=no. **iOS has ignored both since iOS 10**, on purpose, for
+    // accessibility. So the meta tag stops nothing and these two listeners are
+    // the only things that do. Desktop Chrome honours the meta tag, which is
+    // exactly why this looks fine there and zooms on the iPad.
+    //
+    // Double-tap zoom is the one that bites in a fight: she mashes a move
+    // button, Safari reads two quick taps as "zoom to this element", and the
+    // whole game jumps. `touch-action: none` is documented to suppress it and
+    // does not do so reliably, so this is the belt to that braces. Cancelling
+    // the default on a second touchend costs us nothing, because the only thing
+    // it suppresses is the synthetic `click` and NOTHING in this game listens
+    // for click -- every control in the HUD, the title, creation and the
+    // ceremony is on pointerdown.
+    //
+    // Both must be non-passive or preventDefault is ignored and silently does
+    // nothing at all.
+    let lastTouchEnd = 0
+    const onTouchEnd = (e: TouchEvent) => {
+      const now = e.timeStamp
+      // Only ever cancels the SECOND tap of a pair, so a normal single tap
+      // keeps its default behaviour untouched.
+      if (now - lastTouchEnd < DOUBLE_TAP_MS) e.preventDefault()
+      lastTouchEnd = now
+    }
+    // gesture* are WebKit-only and are how pinch-zoom arrives. Nothing in the
+    // game uses pinch or rotate, so all three are refused outright.
+    const onGesture = (e: Event) => e.preventDefault()
+
+    document.addEventListener('touchend', onTouchEnd, { passive: false })
+    document.addEventListener('gesturestart', onGesture, { passive: false })
+    document.addEventListener('gesturechange', onGesture, { passive: false })
+    document.addEventListener('gestureend', onGesture, { passive: false })
+    // Desktop equivalent, so double-clicking in Chrome does not select the HUD.
+    document.addEventListener('dblclick', onGesture, { passive: false })
+
     layer.addEventListener('pointerdown', onDown)
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
@@ -217,6 +255,11 @@ export function useTouchInput(layerRef: React.RefObject<HTMLElement>) {
       window.removeEventListener('pointercancel', onUp)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
+      document.removeEventListener('touchend', onTouchEnd)
+      document.removeEventListener('gesturestart', onGesture)
+      document.removeEventListener('gesturechange', onGesture)
+      document.removeEventListener('gestureend', onGesture)
+      document.removeEventListener('dblclick', onGesture)
       releaseStick()
       lookPointer = null
     }

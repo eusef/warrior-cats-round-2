@@ -714,6 +714,16 @@ export const DUEL_BUTTON_SIZE = 96 // CSS px; well over the 44px touch minimum
 export const DUEL_BUTTON_GAP = 12
 
 /**
+ * Milliseconds inside which a second tap is treated as a double-tap and has its
+ * default action cancelled, to stop iOS Safari zooming the page.
+ *
+ * 350 rather than Safari's own ~300, because she mashes the move buttons and a
+ * pair of taps 320ms apart is still two attacks and never a request to zoom.
+ * Nothing in the game reads `click`, so cancelling it costs nothing at all.
+ */
+export const DOUBLE_TAP_MS = 350
+
+/**
  * Where the bottom-right controls sit, in CSS px, before the safe-area inset
  * is added on top.
  *

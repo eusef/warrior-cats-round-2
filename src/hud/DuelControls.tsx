@@ -252,8 +252,13 @@ function DuelButton({
         ...style,
       }}
     >
-      <div style={{ fontSize: 26, lineHeight: 1 }}>{glyph}</div>
-      <div style={{ marginTop: 3 }}>{label}</div>
+      {/* pointerEvents: none so the tap always hit-tests to the <button>
+          itself, exactly as ActionButton's label already does. `touch-action`
+          is not an inherited property, and a bare inner div was what the finger
+          was actually landing on -- verified, the target of a real tap on SWIPE
+          was the glyph div, not the button. */}
+      <div style={{ fontSize: 26, lineHeight: 1, pointerEvents: 'none' }}>{glyph}</div>
+      <div style={{ marginTop: 3, pointerEvents: 'none' }}>{label}</div>
     </button>
   )
 }
