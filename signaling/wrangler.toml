@@ -1,0 +1,29 @@
+name = "warrior-cats-signal"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+# The whole service is one Durable Object class.
+#
+# THIS IS NEVER DEPLOYED. It runs under `wrangler dev` on the laptop, on the
+# same LAN as the two iPads, so that multiplayer works with no internet at all
+# (see CLAUDE.md, "Two-player co-op runs entirely on the LAN"). The Durable
+# Object is used because it is the right primitive for "one room, two sockets",
+# not because anything is going to Cloudflare.
+#
+# `new_sqlite_classes` and NOT `new_classes` is kept anyway: the KV-backed
+# storage backend requires the Workers PAID plan, so if this is ever deployed,
+# the wrong word here fails at `wrangler deploy` with a billing error. It is a
+# create-time choice that cannot be changed afterwards, so it costs nothing to
+# be right now and cannot be fixed later.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# No observability, no analytics engine, no tail worker. This service must not
+# accumulate anything about two children on a home network.
+[observability]
+enabled = false

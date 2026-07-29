@@ -6,7 +6,7 @@ A third-person cat survival sim in the spirit of WolfQuest Anniversary Edition, 
 
 **Audience: one 10-year-old, playing on an iPad over the local network.** She is the only user who matters. Every tradeoff resolves toward "is this fun on a touchscreen in 30 seconds of play."
 
-**This is never published or sold.** Warrior Cats is Erin Hunter / HarperCollins IP. Personal household use only. Do not add analytics, telemetry, accounts, cloud saves, share buttons, or deploy configs.
+**This is never published or sold.** Warrior Cats is Erin Hunter / HarperCollins IP. Personal household use only. Do not add analytics, telemetry, accounts, cloud saves, share buttons, or deploy configs. Nothing in this project is hosted anywhere; two-player co-op runs entirely on the laptop and the LAN, see below.
 
 ## Hard constraints
 
@@ -14,9 +14,111 @@ A third-person cat survival sim in the spirit of WolfQuest Anniversary Edition, 
 |---|---|
 | Target device | iPad, Safari, landscape. This is the ONLY target. |
 | Input | Touch only. No keyboard, no mouse, no hover states. Desktop input is dev-only convenience. |
-| Delivery | Vite dev server on the LAN. No build/deploy pipeline. |
+| Delivery | Vite dev server on the LAN. No build/deploy pipeline. Multiplayer needs that server to speak **HTTPS**; see below. |
 | Framerate | 60fps on iPad. If a feature can't hold 60, cut the feature. |
 | Dependencies | Ask before adding any new package. Prefer 30 lines of our own code over a dependency. |
+
+## Two-player co-op runs entirely on the LAN
+
+Backlog item 11, `docs/specs/warrior-cats-multiplayer-PRD.md`. **The PRD proposes
+hosting the app on Cloudflare Pages. That was rejected on 2026-07-29 and the PRD
+is out of date on this point.** Phil needs it to work on a plane, with no
+internet at all, so nothing is deployed anywhere. Read this section, not the
+PRD's "Key Decisions" table.
+
+**The one fact everything here follows from:** WebRTC requires a secure context,
+and `http://192.168.1.52:5173` is not one. It does not warn or throw, there is
+simply no `RTCPeerConnection` at all. So the dev server has to speak HTTPS.
+
+| Piece | What |
+|---|---|
+| `tools/make-certs.sh` | Issues a locally-trusted certificate into `certs/` (gitignored). Run once. |
+| `vite.config.ts` | Serves HTTPS **if `certs/` exists**, plain http otherwise. |
+| `signaling/` | A Worker + Durable Object under `wrangler dev` on the laptop, port 8787. Introduces the two iPads, then closes the room. **Never deployed.** |
+
+**Confirmed on the iPad, 2026-07-29:** over that certificate,
+`isSecureContext` is true, `RTCPeerConnection` is available, and ICE gathers a
+host candidate with **no STUN server configured and no internet reachable**.
+
+**Five things that will bite whoever touches this next.**
+
+**The certificate is issued for `papa.local`, not for an IP.** macOS advertises
+its Bonjour name over mDNS on whatever link it is on, and iPadOS resolves it with
+no configuration. An IP-bound certificate works at home and dies the moment the
+laptop becomes a hotspot, because Internet Sharing hands out a different subnet
+(192.168.2.x, not 192.168.1.x). The `.local` name is the same on every network.
+
+**The leaf is 397 days, not mkcert's default.** mkcert issues about 27 months and
+**iOS rejects any TLS certificate whose validity exceeds 398 days.** That is why
+`make-certs.sh` signs its own leaf with openssl rather than just calling
+`mkcert <names>`: the mkcert CA does the trust, but the lifetime has to be ours.
+
+**`NET_ICE_SERVERS` is empty and must stay empty.** A STUN server is an internet
+host; with no internet, ICE waits on it before falling back to the host
+candidates that were always going to win. Two devices on one Wi-Fi have no NAT
+between them and do not need STUN. **TURN is forbidden outright**, not merely
+unconfigured: it would relay the gameplay through a third party, breaking both
+the offline requirement and the iPad-to-iPad rule. A pair that can only connect
+through a relay should fail loudly, not play slowly.
+
+**The relay does not use WebSocket Hibernation, and that is a fix, not an
+oversight.** Under `state.acceptWebSocket`, `close()` never completed the closing
+handshake: the server socket stopped at readyState 2 and the client never saw a
+close event, so a peer sat holding an open relay socket forever. Three assertions
+failed identically across runs. Hibernation exists to avoid Cloudflare duration
+billing, and there is no bill here. Plain `accept()` with sockets in a field.
+
+**The relay address is derived from `window.location`, never configured.** Same
+host as the app, different port, and the scheme derived too: an `https:` page may
+not open a `ws:` socket, so a hardcoded `ws://` works in Chrome on localhost and
+fails on both iPads. That is the worst possible place to find it.
+
+**Rules that do not bend:**
+
+- **No game data ever passes through the relay.** It handles opaque blobs, never
+  parses SDP, and closes the room the moment the data channel opens.
+  `signaling/test/relay.test.mjs` asserts both sockets reach CLOSED.
+- **Solo play must work with no certificate, no relay and no peer.** Multiplayer
+  is additive. Nothing in the game bundle imports `src/net/`.
+- Still no analytics, telemetry, accounts, cloud saves, or share buttons.
+
+### Onboarding a new iPad with no internet
+
+A device that has not yet trusted the CA **cannot open anything this project
+serves over HTTPS**, because that is precisely what the CA is for. So the one
+thing it needs first has to arrive over plain http, and that is the entire
+reason `tools/ca-server.mjs` exists as a separate server on 8080 rather than
+being a route on the Vite server. Do not "tidy" it into Vite; it would stop
+working for the only device that needs it.
+
+On a plane, all three devices get onto one network via **macOS Internet
+Sharing**, which brings up a Wi-Fi access point at a fixed `192.168.2.1` and
+needs no router and no internet. `papa.local` resolves over that link by mDNS,
+which is why the certificate is issued for the name and not the address. The
+certificate also carries `192.168.2.1` as a fallback for hand-typing.
+
+**Order matters, and only the first step is http:**
+
+1. `http://papa.local:8080` on the new iPad, tap through the three steps
+2. Settings, install the profile, then **Certificate Trust Settings, mkcert ON**
+3. `https://papa.local:5173` and it plays
+
+```bash
+./tools/serve.sh                       # all three servers, one command
+                                       #   5173 https  game + connection page
+                                       #   8787 https  relay (never deployed)
+                                       #   8080 http   certificate onboarding
+
+./tools/make-certs.sh                  # only when the cert expires (397 days)
+
+NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" \
+  node signaling/test/relay.test.mjs   # 23 assertions against the live relay
+```
+
+**Her bookmark is now `https://papa.local:5173`, not an http IP.** The old
+`http://192.168.1.52:5173` cannot work: the server speaks HTTPS whenever
+`certs/` exists. The new address is also the better one, because it survives
+moving to any other network.
 
 ## Content policy (non-negotiable)
 

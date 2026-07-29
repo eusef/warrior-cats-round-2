@@ -742,3 +742,79 @@ export const ACTION_BUTTON_SIZE = 116
 /** Per-second exponential approach of the drawn health bar toward the real
  *  value, so damage reads as a tick-down rather than a jump cut. */
 export const HEALTH_BAR_EASE = 7
+
+// ---------------------------------------------------------------------------
+// Two-player co-op (backlog 11). See CLAUDE.md "The hosting exception" for why
+// this feature is allowed to touch a hosted service at all, and
+// docs/specs/warrior-cats-multiplayer-PRD.md for the design.
+// ---------------------------------------------------------------------------
+
+/**
+ * Port the signalling relay listens on, alongside the Vite server.
+ *
+ * The relay's ORIGIN is deliberately not a constant. It is derived at runtime
+ * from `window.location` in `net/signal.ts`, so the same build works from
+ * `localhost:5173` in Chrome and from `https://papa.local:5173` on the iPads
+ * without a rebuild, and keeps working when the laptop becomes a hotspot and
+ * every IP on the network changes. A hardcoded origin is the one thing
+ * guaranteed to break on a plane.
+ *
+ * `VITE_SIGNAL_URL` overrides the whole origin for the case where the relay is
+ * genuinely somewhere else. Nothing needs it today.
+ */
+export const NET_SIGNAL_PORT = 8787
+export const NET_SIGNAL_OVERRIDE = (import.meta.env?.VITE_SIGNAL_URL as string | undefined) ?? null
+
+/**
+ * Characters a session id is drawn from, and how many of them.
+ *
+ * The alphabet has no 0/O/1/I/5/S: the id is shown on screen at a large size
+ * and may be read aloud across a room by a ten-year-old when a scan misses.
+ * 26 symbols over 4 places is about 457,000 rooms, which against a ten-minute
+ * room lifetime makes guessing a live session a non-event.
+ */
+export const NET_ROOM_ALPHABET = '23456789ABCDEFGHJKLMNPQRTUVWXY'
+export const NET_ROOM_ID_LEN = 4
+
+/**
+ * Seconds from "start connecting" to giving up and showing the try-again path.
+ *
+ * A same-LAN handshake settles in about two seconds. 20 is generous enough that
+ * a slow first page load never trips it, and short enough that a child is not
+ * left staring at a spinner wondering whether it is broken.
+ */
+export const NET_CONNECT_TIMEOUT_SEC = 20
+
+/**
+ * Heartbeat rate on the data channel, in messages per second, and how many
+ * seconds of silence from the peer counts as a dropped connection.
+ *
+ * `oniceconnectionstatechange` does eventually report a drop, but on iOS a
+ * locked screen can leave the connection reading `connected` for a long time
+ * while nothing is actually flowing. The heartbeat is what makes a disconnect
+ * detectable in seconds rather than eventually.
+ */
+export const NET_HEARTBEAT_HZ = 1
+export const NET_PEER_TIMEOUT_SEC = 6
+
+/**
+ * ICE configuration: EMPTY, on purpose. No STUN, and never a TURN server.
+ *
+ * This reverses an earlier decision, and the reason is the plane. A STUN server
+ * is a public internet host; with no internet it cannot be reached, and ICE
+ * gathering sits waiting on it before falling back to the host candidates that
+ * were always going to be the ones that worked. That is several seconds of a
+ * child staring at "waiting for your friend" in exchange for nothing.
+ *
+ * Two devices on the same link do not need STUN. STUN exists to discover your
+ * address as seen from outside a NAT, and there is no NAT between two iPads on
+ * one Wi-Fi network. Measured on the iPad with an empty list: one host
+ * candidate gathered, in mDNS `.local` form.
+ *
+ * TURN is not merely unconfigured, it is forbidden. TURN relays the actual
+ * gameplay through a third party on the internet, which breaks both the
+ * offline requirement and the rule that the data path stays iPad-to-iPad. If a
+ * pair can only connect through a relay, the correct outcome is a clear
+ * failure, not a slow game.
+ */
+export const NET_ICE_SERVERS: RTCIceServer[] = []
