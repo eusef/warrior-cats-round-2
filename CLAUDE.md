@@ -170,7 +170,14 @@ not headroom measured.
 
 ## Assets
 
-Quaternius CC0 low-poly packs in `public/models/`, `.glb` format. There is no cat model in the pack: the Fox rig is the stand-in cat, recolored per character. Do not spend a session trying to model a cat. Do not generate placeholder cubes either, the fox is already there.
+Quaternius CC0 low-poly packs in `public/models/`, `.glb` format. The pack has no
+cat, so **`Cat.glb` is built rather than downloaded**: a donor cat mesh welded
+onto the Quaternius Fox armature by `tools/cat_transfer.py`, inheriting all
+twelve of the fox's clips. See backlog item 12 and `public/models/PROVENANCE.md`.
+`Fox.glb` is still required as the source of that rig.
+
+Do not spend a session trying to model a cat, and do not generate placeholder
+cubes. If the cat needs to change, re-run the transfer script.
 
 Animation clip names come from the GLTF. Read them at runtime and log them, never guess the string.
 
@@ -435,7 +442,77 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 9. **A clanmate who follows and comments(ignore for now).** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
 10. **Photo mode(ignore for now).** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
 11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
-12. **Cat Models**(ignore for now). Need to update the models to look like cats.
+12. ~~**Cat Models.**~~ **DONE** — she is a cat now, not a recoloured fox.
+    `public/models/Cat.glb`, and it is **built, not downloaded**:
+    `tools/cat_transfer.py` welds a donor cat mesh onto the fox's armature in
+    headless Blender, so the cat inherits all twelve of the fox's clips and
+    nothing in `useCatAnimation`, `useCatJuice`, `PlayerCat` or `RivalCat`
+    changed. The only edit outside `tools/` was `MODEL_URL` in the two actors.
+    Confirmed on the iPad by Phil.
+
+    **804 triangles against the fox's 1,848**, same 5 materials, same 5 draw
+    calls per cat. The budget table above is unchanged and now has slack it did
+    not have: two cats cost about 2k triangles rather than 3.7k.
+
+    **Re-run it rather than hand-editing the GLB:**
+
+    ```bash
+    /Applications/Blender.app/Contents/MacOS/Blender --background --python tools/cat_transfer.py
+    node tools/check-cat-glb.mjs public/models/Cat.glb
+    ```
+
+    `tools/check-cat-glb.mjs` is twelve mechanical assertions from
+    `docs/specs/cat-model.md`. **It found five defects that looking at the model
+    would not have**, which is the entire argument for having it, and it is worth
+    knowing what they were before touching any of this.
+
+    **The fox's clips are authored at exactly 30fps and Blender's scene defaults
+    to 24.** The importer lays keys on whole frames, so Gallop's 13.6 frames
+    round to 13 and the round trip silently DROPS the terminal frame -- the
+    duplicate of frame 0 that is the only thing making the clip loop seamlessly.
+    Walk, Gallop, Gallop_Jump and Eating all came back popping. `render.fps = 30`
+    before the import is load-bearing.
+
+    **Blender dedupes material names against whatever is still in `bpy.data`.**
+    The fox's own `Main`, `Main_Light`, `Grey`, `Black` and `Eyes` are orphaned
+    once its mesh is deleted but still resident, so new ones became `Main.001`.
+    That fails the `m.name === 'Main'` test in `PlayerCat.tsx` **silently**: the
+    cat loads, renders, animates, and simply cannot be recoloured. The script
+    purges `bpy.data.materials` first.
+
+    **`object.scale` multiplies LOCAL axes, before an unapplied rotation.** The
+    cat is rotated -90 degrees about Z to face the fox's -Y, so world-axis scale
+    factors landed on the wrong axes and produced a cat 5.85 long against the
+    fox's 5.59. Apply the rotation before computing the scale.
+
+    **A 482-polygon mesh has no facet small enough to be an eye.** The first pass
+    assigned existing polygons to `Eyes` and `Black` on the theory that adding no
+    geometry was tidier. One polygon at the eye is a green block the size of a
+    cheek. Features get their own quads, sized independently of the body, which
+    is exactly what the fox does with its 8-triangle `Eyes` primitive. Ten
+    triangles total. And `Main_Light` must be a **height** test, not a normal
+    test: `normal.z < -0.4` catches the fold at every shoulder, hip and elbow,
+    and blotched the whole pelt with cream.
+
+    **Automatic weights leaves floating geometry unweighted.** Bone heat needs a
+    vertex inside the volume the bones radiate through, and 12 of the 20 feature
+    vertices were outside it. An unweighted vertex does not follow the skeleton,
+    so the eyes and nose would hang in the air while the cat walked out from
+    under them. `repair_weights()` copies each orphan's weights from its nearest
+    weighted neighbour, and the run logs `0 still unweighted`.
+
+    Verified in Chrome at 1180x757, dpr 2: 12/12 checks, all ten clips bound on
+    both cats with zero unresolved, juice tail 8/8 and both ears 2/2, recolour
+    asserted by reading `material.color` off the cat rather than from pixels,
+    19-20 draw calls, 39.5k-46.2k triangles, 60fps, zero console errors.
+
+    **The eye is small.** It reads at the creation camera and is a mark rather
+    than an eye further out. Its half-size is `0.070 * hd.x` in `add_features`,
+    and every anchor position in that function is a named fraction. Tune there,
+    do not re-model.
+
+    **`Fox.glb` stays.** It is the source of the rig and every clip, and the
+    transfer script reads it on every run.
 
 13. ~~**Combat.**~~ **DONE** — built, verified in Chrome, and confirmed on the
     iPad: touch, a solid 60fps with two cats, and the mix by ear. Real-time

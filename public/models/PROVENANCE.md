@@ -1,8 +1,56 @@
 # Model provenance
 
+## Cat.glb
+
+**The cat.** Both the player and the rival. Recoloured per character via the same
+five material slots the fox used, so nothing downstream changed.
+
+Not a downloaded asset: it is **built** by `tools/cat_transfer.py`, which welds a
+donor cat mesh onto the fox's armature so it inherits all of the fox's animation.
+Re-runnable from the repo root:
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender --background --python tools/cat_transfer.py
+node tools/check-cat-glb.mjs public/models/Cat.glb
+```
+
+| | |
+|---|---|
+| Mesh | `mesh_cat` from `cat_rigged_animation_run.blend` in the repo root |
+| Rig and animation | `Fox.glb`, unchanged. Same 51 bones, same clips. |
+| Built with | Blender 5.2.0 LTS |
+
+### Donor mesh origin
+
+**UNRECORDED, and it needs filling in.** What is verifiable from the files
+themselves: a Blender 2.80 `.blend` plus an FBX export of it, both stamped
+**2019-10-30**, delivered in a folder named `source-48-cat_rigged`. Author,
+source site and licence are all unknown. This is personal household use only and
+nothing is published, so it is not urgent, but every other model here records
+where it came from and this one should too.
+
+Its own 27-bone rig and its single 1.5s run cycle are **discarded** by the
+transfer. Only the mesh is used.
+
+### Contents
+
+- **804 triangles** (794 from the donor, 10 added as feature geometry)
+- 51 joints, 1 skin
+- 5 primitives / 5 materials: `Main`, `Main_Light`, `Grey`, `Black`, `Eyes`
+- 0 textures, 0 images. Flat `baseColorFactor` only, the per-cat recolour hook.
+- **5 draw calls per cat**, same as the fox, against the 100 budget.
+
+### Animation clips
+
+Inherited wholesale from `Fox.glb`, so the table below is the fox's. Two
+differences, both deliberate: **`Death` is deleted by the transfer script** and
+never reaches the file, and the donor's own `ArmatureAction` is dropped too.
+
 ## Fox.glb
 
-The stand-in cat. Recoloured per character via the five material slots.
+Superseded by `Cat.glb` as the in-game model, and **kept because it is the source
+of the rig and all twelve clips.** `tools/cat_transfer.py` reads it every run.
+Do not delete it.
 
 | | |
 |---|---|
