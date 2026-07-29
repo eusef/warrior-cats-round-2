@@ -61,7 +61,7 @@ import { pushOutOfTrees } from './PlayerCat'
 import { useCatAnimation } from './useCatAnimation'
 import { useCatJuice, type JuiceContext } from './useCatJuice'
 
-const MODEL_URL = '/models/Fox.glb'
+const MODEL_URL = '/models/Cat.glb'
 useGLTF.preload(MODEL_URL)
 
 // Hoisted. Nothing is allocated inside useFrame.

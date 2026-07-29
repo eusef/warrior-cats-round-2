@@ -60,7 +60,7 @@ import { useCatAnimation } from './useCatAnimation'
 import { useCatJuice, type JuiceContext } from './useCatJuice'
 import { CAMP_LINES, CATCH_LINES, EAT_LINES, HUNGER_LINES } from '../content/lines'
 
-const MODEL_URL = '/models/Fox.glb'
+const MODEL_URL = '/models/Cat.glb'
 useGLTF.preload(MODEL_URL)
 
 // Hoisted. Nothing is allocated inside useFrame.
