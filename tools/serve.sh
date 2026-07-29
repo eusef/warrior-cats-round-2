@@ -4,10 +4,15 @@
 #
 #   ./tools/serve.sh
 #
-# Three processes:
-#   5173  https  the game and the connection page   (Vite)
-#   8787  https  the signalling relay               (wrangler dev, local only)
-#   8080  http   the certificate, for onboarding    (plain http, see ca-server)
+# Three processes, but the iPads only ever talk to ONE port:
+#   5173  https  the game, the connection page, and /signal  (Vite)
+#   8787  http   the relay, LOOPBACK ONLY, proxied by Vite   (wrangler dev)
+#   8080  http   the certificate, for onboarding a new iPad
+#
+# The relay is deliberately not reachable from the network. It had its own HTTPS
+# listener on 8787 and both iPads failed to open any connection to it, while
+# loading the page from 5173 over the very same certificate. Vite proxies it now
+# and the problem is gone rather than understood.
 #
 # Ctrl-C stops all three.
 set -euo pipefail

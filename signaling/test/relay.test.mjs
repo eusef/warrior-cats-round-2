@@ -10,7 +10,7 @@
  *   NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" \
  *     node signaling/test/relay.test.mjs [wss://papa.local:8787]
  */
-const BASE = process.argv[2] || 'wss://papa.local:8787'
+const BASE = process.argv[2] || "wss://papa.local:5173/signal"
 
 let pass = 0
 let fail = 0

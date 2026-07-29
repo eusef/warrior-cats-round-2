@@ -2,7 +2,7 @@ import {
   NET_ROOM_ALPHABET,
   NET_ROOM_ID_LEN,
   NET_SIGNAL_OVERRIDE,
-  NET_SIGNAL_PORT,
+  NET_SIGNAL_PATH,
 } from '../game/constants'
 import type { ClientMsg, ServerMsg } from './protocol'
 
@@ -113,29 +113,27 @@ export class Signal {
 }
 
 /**
- * Where the relay lives, derived from the page that is asking.
+ * Where the relay lives: THE PAGE'S OWN ORIGIN, under a path prefix.
  *
- * Same host as the app, different port. Deriving this rather than configuring
- * it is what makes one build work from `localhost:5173` in Chrome, from
- * `https://papa.local:5173` on the iPads, and from whatever subnet a laptop
- * hotspot invents at 30,000 feet, with no rebuild and no edit.
+ * Not a second port. The relay had its own HTTPS listener on 8787 and both
+ * iPads failed to open a single connection to it, health fetch and WebSocket
+ * alike, while loading the page from 5173 over the same certificate. Vite
+ * proxies it now, so the only origin either device ever touches is the one
+ * already proven to work on both.
  *
- * The scheme is derived too, and that one is not cosmetic: an `https:` page may
- * not open a `ws:` socket. Mixed content is blocked, so a hardcoded `ws://`
- * would work in Chrome on localhost and fail on both iPads, which is the worst
- * possible place to discover it.
+ * The scheme is still derived, and that is not cosmetic: an `https:` page may
+ * not open a `ws:` socket, so a hardcoded `ws://` works in Chrome on localhost
+ * and fails on the device. Same-origin makes it a one-line derivation.
  */
 export function signalOrigin() {
-  if (NET_SIGNAL_OVERRIDE) return NET_SIGNAL_OVERRIDE
-  const l = window.location
-  return `${l.protocol}//${l.hostname}:${NET_SIGNAL_PORT}`
+  return NET_SIGNAL_OVERRIDE ?? window.location.origin
 }
 
-/** `https://papa.local:8787` -> `wss://papa.local:8787/room/AB12`. */
+/** `https://papa.local:5173` -> `wss://papa.local:5173/signal/room/AB12`. */
 export function signalUrl(room: string) {
   const u = new URL(signalOrigin())
   u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-  u.pathname = `/room/${room}`
+  u.pathname = `${NET_SIGNAL_PATH}/room/${room}`
   return u.toString()
 }
 
@@ -144,7 +142,9 @@ export async function signalHealthy(timeoutMs = 4000) {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), timeoutMs)
   try {
-    const r = await fetch(new URL('/health', signalOrigin()).toString(), { signal: ctl.signal })
+    const r = await fetch(new URL(`${NET_SIGNAL_PATH}/health`, signalOrigin()).toString(), {
+      signal: ctl.signal,
+    })
     return r.ok
   } catch {
     return false

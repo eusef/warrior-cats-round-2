@@ -750,18 +750,27 @@ export const HEALTH_BAR_EASE = 7
 // ---------------------------------------------------------------------------
 
 /**
- * Port the signalling relay listens on, alongside the Vite server.
+ * Where the relay lives: BEHIND THE VITE SERVER, on the same origin, under this
+ * path prefix. Not a second port, and this is the second design after the first
+ * one failed on the device.
  *
- * The relay's ORIGIN is deliberately not a constant. It is derived at runtime
- * from `window.location` in `net/signal.ts`, so the same build works from
- * `localhost:5173` in Chrome and from `https://papa.local:5173` on the iPads
- * without a rebuild, and keeps working when the laptop becomes a hotspot and
- * every IP on the network changes. A hardcoded origin is the one thing
- * guaranteed to break on a plane.
+ * The relay used to listen on its own HTTPS port, 8787. It worked from curl, it
+ * worked from Chrome, the TLS was byte-identical to 5173's, both were bound to
+ * all interfaces and the iPad trusted the certificate well enough to load the
+ * page from 5173. The iPad still could not open a single connection to 8787,
+ * neither the health fetch nor the WebSocket. Rather than keep chasing iOS's
+ * objection to that port, the second origin was removed.
  *
- * `VITE_SIGNAL_URL` overrides the whole origin for the case where the relay is
- * genuinely somewhere else. Nothing needs it today.
+ * Proxying through Vite is better on every axis anyway: the iPads only ever
+ * talk to the one port already proven to work on both devices, there is no
+ * cross-origin request so CORS stops mattering, and the relay no longer needs a
+ * certificate at all because it listens on plain http on loopback only.
+ *
+ * `VITE_SIGNAL_URL` overrides the whole origin if the relay is ever genuinely
+ * somewhere else. Nothing needs it today.
  */
+export const NET_SIGNAL_PATH = '/signal'
+/** Loopback port Vite proxies to. The browser never sees this. */
 export const NET_SIGNAL_PORT = 8787
 export const NET_SIGNAL_OVERRIDE = (import.meta.env?.VITE_SIGNAL_URL as string | undefined) ?? null
 

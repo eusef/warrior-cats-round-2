@@ -34,7 +34,7 @@ simply no `RTCPeerConnection` at all. So the dev server has to speak HTTPS.
 |---|---|
 | `tools/make-certs.sh` | Issues a locally-trusted certificate into `certs/` (gitignored). Run once. |
 | `vite.config.ts` | Serves HTTPS **if `certs/` exists**, plain http otherwise. |
-| `signaling/` | A Worker + Durable Object under `wrangler dev` on the laptop, port 8787. Introduces the two iPads, then closes the room. **Never deployed.** |
+| `signaling/` | A Worker + Durable Object under `wrangler dev`, **plain http on loopback only**, proxied by Vite at `/signal`. Introduces the two iPads, then closes the room. **Never deployed.** |
 
 **Confirmed on the iPad, 2026-07-29:** over that certificate,
 `isSecureContext` is true, `RTCPeerConnection` is available, and ICE gathers a
@@ -68,10 +68,22 @@ close event, so a peer sat holding an open relay socket forever. Three assertion
 failed identically across runs. Hibernation exists to avoid Cloudflare duration
 billing, and there is no bill here. Plain `accept()` with sockets in a field.
 
-**The relay address is derived from `window.location`, never configured.** Same
-host as the app, different port, and the scheme derived too: an `https:` page may
-not open a `ws:` socket, so a hardcoded `ws://` works in Chrome on localhost and
-fails on both iPads. That is the worst possible place to find it.
+**The relay is proxied by Vite at `/signal`, and must never get its own port
+back.** This is the single most expensive thing learned so far. The relay served
+its own HTTPS on 8787 and **both iPads failed to open any connection to it** --
+the health fetch and the WebSocket alike -- while loading the page from 5173
+over the very same certificate. From the laptop it was flawless: curl worked,
+Chrome worked, `openssl s_client` showed an identical certificate and identical
+TLS 1.3 on both ports, both were bound to all interfaces, and the firewall was
+off. The cause was never found and does not need to be: the second origin is
+gone. The relay now listens on plain http on **127.0.0.1 only**, needs no
+certificate, and is unreachable from the network. `ws: true` on the proxy is
+load-bearing; without it the health probe passes and every upgrade 404s, which
+reads as "relay up, pairing broken".
+
+**The relay address is derived from `window.location.origin`, never configured.**
+The scheme is derived too: an `https:` page may not open a `ws:` socket, so a
+hardcoded `ws://` works in Chrome on localhost and fails on both iPads.
 
 **Rules that do not bend:**
 
@@ -543,7 +555,63 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
 8. **Prey variety (ignore for now).** Vole (slow), squirrel (fast, breaks line of sight), bird (one chance, then it flies). Gives the hunt a skill ceiling.
 9. **A clanmate who follows and comments(ignore for now).** Simple follow AI plus hand-written barks from `lines.ts`. Presence beats dialogue depth.
 10. **Photo mode(ignore for now).** Freeze, orbit, hide the HUD, save a PNG. Kids share what they make.
-11. **Multiplayer mode**(ignore for now). Where the players can see each other on the map and chase prey.
+11. **Multiplayer mode.** Two kids, two iPads, one forest.
+    `docs/specs/warrior-cats-multiplayer-PRD.md`, but read
+    "Two-player co-op runs entirely on the LAN" above first: the PRD proposes
+    hosting on Cloudflare Pages and **that was rejected**, because it has to work
+    on a plane.
+
+    **Phase 0 (the transport): DONE, confirmed on two iPads 2026-07-29.**
+    Two iPads, one QR scanned with the native Camera app, **connected in 3.6
+    seconds** with an 11ms round trip and 8 of 8 heartbeats returned. Nothing
+    deployed, nothing hosted, no account anywhere.
+
+    **The two readouts that matter, and what they close:**
+
+    **`candidate pair: host / host`.** The link is direct iPad-to-iPad over the
+    LAN. No STUN was configured and none was needed, and there is no TURN
+    server, so this is the proof that gameplay is not being relayed through
+    anything. It also closes **both** of the PRD's top risks in one line: the
+    router does not do AP/client isolation, and **iOS's mDNS `.local` host
+    candidates do resolve between two iPads**, which was the failure nobody
+    could have predicted from a desktop.
+
+    **`relay socket: NONE` while connected.** The signalling service is not
+    merely declining to carry gameplay, it is gone. Corroborated from the relay
+    side: exactly two WebSocket upgrades to that room, one per iPad, and no
+    further traffic.
+
+    **Three things that will bite whoever touches this next**, on top of the
+    five in the LAN section above.
+
+    **The early-candidate buffer is not defensive coding, it fired on the first
+    real run.** The guest logged `drained 1 early candidate(s)`: a candidate
+    arrived before `setRemoteDescription`, and `addIceCandidate` throws in that
+    state. Without the queue in `peer.ts` that candidate is dropped silently,
+    and on a two-candidate connection dropping one is the whole connection.
+
+    **The connect timeout is armed when the peer ARRIVES, never at `start()`.**
+    Armed at start it measures "how long until a friend walks over with an
+    iPad", so the host times out after 20 seconds and drops her own room while
+    the QR is still on the table. Caught in Chrome doing exactly that.
+
+    **A guest told it is the host means the code is stale**, not that something
+    went right. That room was empty, so the QR being scanned is dead. `peer.ts`
+    takes a `want` role solely to catch this; unhandled it is the worst failure
+    in the flow, because it looks exactly like a working join and waits forever.
+
+    `signaling/test/relay.test.mjs` is 23 assertions against the running relay
+    over `wss://papa.local:5173/signal`. Run it before blaming the network: a
+    relay bug during a two-iPad test is otherwise indistinguishable from a
+    router problem. It has already caught four, including WebSocket Hibernation
+    silently breaking `close()`.
+
+    **Not built yet:** Phase 1 (Tier 0, both cats in one forest, `src/net/`
+    integrated into the game, `RemoteCat.tsx`) and Phase 2 (Tier 1, shared
+    prey). `src/net/spike/` and `net.html` are the Phase 0 harness and get
+    deleted when Phase 1 lands; `peer.ts`, `signal.ts` and `qr.ts` survive.
+    **Nothing in the game bundle imports `src/net/` yet**, which is why solo
+    play cannot have regressed.
 12. ~~**Cat Models.**~~ **DONE** — she is a cat now, not a recoloured fox.
     `public/models/Cat.glb`, and it is **built, not downloaded**:
     `tools/cat_transfer.py` welds a donor cat mesh onto the fox's armature in

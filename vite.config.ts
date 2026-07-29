@@ -25,6 +25,14 @@ const https =
     ? { cert: readFileSync(CERT), key: readFileSync(KEY) }
     : undefined
 
+/**
+ * Port the signalling relay listens on, over PLAIN http, on LOOPBACK ONLY.
+ * Must match NET_SIGNAL_PORT in src/game/constants.ts.
+ */
+const SIGNAL_PORT = 8787
+/** Must match NET_SIGNAL_PATH in src/game/constants.ts. */
+const SIGNAL_PATH = '/signal'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -35,6 +43,32 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     https,
+    proxy: {
+      /**
+       * The signalling relay, folded into this origin.
+       *
+       * This proxy is the fix for a real device failure, not a tidiness pass.
+       * The relay used to serve its own HTTPS on 8787. From the laptop it was
+       * fine: curl worked, Chrome worked, `openssl s_client` showed the same
+       * certificate and the same TLS 1.3 as 5173, and it was bound to all
+       * interfaces with the firewall off. Both iPads still failed to open a
+       * single connection to it, the health fetch and the WebSocket alike,
+       * while happily loading this page from 5173 over that same certificate.
+       *
+       * Proxying removes the question instead of answering it. The iPads only
+       * ever talk to 5173, there is no cross-origin request so CORS stops
+       * applying, and the relay needs no certificate at all now.
+       *
+       * `ws: true` is the load-bearing part. Without it the health probe would
+       * pass and every WebSocket upgrade would 404, which reads as "the relay
+       * is up but pairing is broken" and is a miserable thing to debug.
+       */
+      [`${SIGNAL_PATH}`]: {
+        target: `http://127.0.0.1:${SIGNAL_PORT}`,
+        ws: true,
+        rewrite: (p) => p.replace(new RegExp(`^${SIGNAL_PATH}`), ''),
+      },
+    },
   },
   build: {
     rollupOptions: {

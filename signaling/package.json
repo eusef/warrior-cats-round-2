@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "WebRTC signalling relay for Warrior Cats two-player co-op. Introduces two iPads, then gets out of the way.",
   "scripts": {
-    "dev": "wrangler dev --ip 0.0.0.0 --port 8787 --local-protocol https --https-cert-path ../certs/lan-cert.pem --https-key-path ../certs/lan-key.pem",
-    "dev:http": "wrangler dev --ip 0.0.0.0 --port 8787",
+    "//": "Plain http on LOOPBACK ONLY. Vite proxies /signal to it, so the relay is never exposed on the network and never needs a certificate. Do not add --ip 0.0.0.0.",
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },
