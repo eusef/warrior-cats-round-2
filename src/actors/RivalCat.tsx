@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
-import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import {
   CAT_GROUND_OFFSET,
   CAT_MODEL_YAW_OFFSET,
@@ -58,6 +57,7 @@ import { clamp, groundHeightAt } from '../game/terrain'
 import { logMove } from '../debug/duelLog'
 import { DEBUG, debugHooks } from '../debug/expose'
 import { pushOutOfTrees } from './PlayerCat'
+import { cloneCatSkin, paintFixed } from './catSkin'
 import { useCatAnimation } from './useCatAnimation'
 import { useCatJuice, type JuiceContext } from './useCatJuice'
 
@@ -101,30 +101,17 @@ export function RivalCat() {
   const squash = useRef<THREE.Group>(null)
   const { scene, animations } = useGLTF(MODEL_URL)
 
-  // SkeletonUtils.clone, exactly as PlayerCat does: a plain useGLTF reuse would
-  // share one skeleton between the two cats and they would animate in lockstep,
-  // which is the single bug this project has hit more than once.
+  // Own skeleton, exactly as PlayerCat: a plain useGLTF reuse would share one
+  // skeleton between the two cats and they would animate in lockstep, which is
+  // the single bug this project has hit more than once.
+  //
+  // Her colours are fixed hexes, not a PELTS index, so she is a visibly
+  // different cat whatever pelt Mila chose. Two ginger cats in a scuffle at
+  // arm's length on an iPad is unreadable. Painted here in the memo rather than
+  // in an effect because they never change.
   const model = useMemo(() => {
-    const cloned = skeletonClone(scene) as THREE.Group
-    cloned.traverse((o) => {
-      const mesh = o as THREE.Mesh
-      if (!mesh.isMesh) return
-      mesh.castShadow = true
-      mesh.receiveShadow = false
-      mesh.frustumCulled = false // skinned bounds go stale mid-animation
-      const src = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[]
-      // Her colours are fixed hexes, not a PELTS index, so she is a visibly
-      // different cat whatever pelt Mila chose. Two ginger cats in a scuffle at
-      // arm's length on an iPad is unreadable.
-      const track = (m: THREE.MeshStandardMaterial) => {
-        const c = m.clone()
-        if (m.name === 'Main') c.color.set(RIVAL_MAIN_COLOR)
-        else if (m.name === 'Main_Light') c.color.set(RIVAL_LIGHT_COLOR)
-        else if (m.name === 'Eyes') c.color.set(RIVAL_EYE_COLOR)
-        return c
-      }
-      mesh.material = Array.isArray(src) ? src.map(track) : track(src)
-    })
+    const { model: cloned, slots } = cloneCatSkin(scene)
+    paintFixed(slots, RIVAL_MAIN_COLOR, RIVAL_LIGHT_COLOR, RIVAL_EYE_COLOR)
     return cloned
   }, [scene])
 

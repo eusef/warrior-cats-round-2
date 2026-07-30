@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
-import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import {
   CAT_ACCEL,
   CAT_CROUCH_SPEED_MULT,
@@ -26,8 +25,6 @@ import {
   SAVE_INTERVAL_SEC,
   WORLD_EDGE_MARGIN,
   WORLD_HALF,
-  EYE_COLORS,
-  PELTS,
 } from '../game/constants'
 import {
   MOVES,
@@ -49,13 +46,14 @@ import { openStage } from '../game/arena'
 import { undiscoveredHit } from '../game/landmarks'
 import { live, resetLive } from '../game/live'
 import { feed, tickNeeds } from '../game/needs'
-import { useGame, type Identity } from '../game/store'
+import { useGame } from '../game/store'
 import { clamp, distToCamp, groundHeightAt } from '../game/terrain'
 import { input } from '../input/useTouchInput'
 import { treeColliders } from '../world/Foliage'
 import { logMove } from '../debug/duelLog'
 import { debugHooks } from '../debug/expose'
 import { preyRegistry } from './preyRegistry'
+import { cloneCatSkin, paint } from './catSkin'
 import { useCatAnimation } from './useCatAnimation'
 import { useCatJuice, type JuiceContext } from './useCatJuice'
 import { CAMP_LINES, CATCH_LINES, EAT_LINES, HUNGER_LINES } from '../content/lines'
@@ -76,26 +74,6 @@ const _juice: JuiceContext = {
   hopHeight: 0,
 }
 
-/** The three GLB material slots character creation paints. */
-interface PeltSlots {
-  main: THREE.MeshStandardMaterial[]
-  light: THREE.MeshStandardMaterial[]
-  eyes: THREE.MeshStandardMaterial[]
-}
-
-/**
- * Discrete, not per-frame: this runs on a swatch tap, never in useFrame.
- * `color.set` on an existing material costs nothing and adds no draw call, so
- * the whole of character creation is free at runtime.
- */
-function paint(slots: PeltSlots, id: Identity) {
-  const pelt = PELTS[id.pelt] ?? PELTS[0]
-  const eye = EYE_COLORS[id.eyes] ?? EYE_COLORS[0]
-  for (const m of slots.main) m.color.set(pelt.main)
-  for (const m of slots.light) m.color.set(pelt.light)
-  for (const m of slots.eyes) m.color.set(eye.color)
-}
-
 export function PlayerCat() {
   const group = useRef<THREE.Group>(null)
   // A plain Object3D wrapper the squash spring scales. Costs no draw call and
@@ -105,32 +83,9 @@ export function PlayerCat() {
   const { scene, animations } = useGLTF(MODEL_URL)
   const identity = useGame((s) => s.identity)
 
-  // SkeletonUtils.clone is mandatory here: a plain useGLTF reuse shares the
-  // skeleton, and every cat would animate identically. Also keeps StrictMode's
-  // double mount from attaching the same scene graph twice.
-  const { model, slots } = useMemo(() => {
-    const cloned = skeletonClone(scene) as THREE.Group
-    const found: PeltSlots = { main: [], light: [], eyes: [] }
-    cloned.traverse((o) => {
-      const mesh = o as THREE.Mesh
-      if (!mesh.isMesh) return
-      mesh.castShadow = true
-      mesh.receiveShadow = false
-      mesh.frustumCulled = false // skinned bounds go stale mid-animation
-      // Clone the materials so recolouring one cat never tints another, and
-      // keep a handle on each one so creation can repaint it on a tap.
-      const src = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[]
-      const track = (m: THREE.MeshStandardMaterial) => {
-        const c = m.clone()
-        if (m.name === 'Main') found.main.push(c)
-        else if (m.name === 'Main_Light') found.light.push(c)
-        else if (m.name === 'Eyes') found.eyes.push(c)
-        return c
-      }
-      mesh.material = Array.isArray(src) ? src.map(track) : track(src)
-    })
-    return { model: cloned, slots: found }
-  }, [scene])
+  // Own skeleton, own copies of the three painted materials. See catSkin.ts for
+  // why Grey and Black are not among them.
+  const { model, slots } = useMemo(() => cloneCatSkin(scene), [scene])
 
   // Only fires when the identity object actually changes, which is a swatch tap
   // or a load. Never during play.

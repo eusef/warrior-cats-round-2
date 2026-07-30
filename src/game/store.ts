@@ -103,6 +103,48 @@ export function catName(id: Identity): string {
   return id.warrior ? warriorName(id) : apprenticeName(id)
 }
 
+/**
+ * Where the two-iPad session is up to. 'lost' is a peer that was connected and
+ * went away; 'failed' never got there at all.
+ */
+export type NetStatus = 'idle' | 'signaling' | 'connected' | 'lost' | 'failed'
+
+export interface NetState {
+  status: NetStatus
+  role: 'host' | 'guest' | null
+  /** The four-character session id, once one exists. */
+  room: string | null
+  /** Derived locally from the peer's identity indices. No text crosses the wire. */
+  peerName: string | null
+  /** The peer's identity, for recolouring their cat. Null until `hello` arrives. */
+  peerIdentity: Identity | null
+  /** A kid-readable failure line, already looked up from lines.ts. */
+  error: string | null
+}
+
+/**
+ * What the game WANTS the network to be doing. This file must not import
+ * anything from src/net/ -- the networking layer imports the store, so the
+ * other direction is a cycle, and keeping WebRTC out of the game-state module
+ * is worth an indirection on its own. So the store only ever states the intent
+ * and NetDriver, which may import both, is the thing that acts on it.
+ */
+export interface NetWant {
+  kind: 'idle' | 'host' | 'join'
+  room: string | null
+}
+
+const NET_IDLE: NetState = {
+  status: 'idle',
+  role: null,
+  room: null,
+  peerName: null,
+  peerIdentity: null,
+  error: null,
+}
+
+const NET_WANT_IDLE: NetWant = { kind: 'idle', room: null }
+
 interface SaveBlob {
   v: 1 | 2 | 3 | 4 | 5
   health: number
@@ -180,6 +222,30 @@ interface GameState {
   startDuel: () => void
   endDuel: (outcome: DuelOutcome) => void
 
+  /**
+   * The two-iPad session. Deliberately NOT saved: a session does not survive a
+   * reload, because the PRD requires a fresh scan and promises no
+   * auto-reconnect. Written by NetDriver from WebRTC callbacks, which are
+   * events and not frames, so a store write there is legal under R3F rule 1.
+   * The pose that arrives every frame goes to `live.remote` instead.
+   */
+  net: NetState
+  /** Intent only. NetDriver watches this and does the actual connecting. */
+  netWant: NetWant
+  /**
+   * A room id parked between the scan and the start of play. A friend who scans
+   * the QR may have no save at all, so start() routes her to creation, and
+   * joining there would drop the connect overlay on top of the creation sheet
+   * while she is choosing a pelt. The join fires from beginPlay() instead.
+   */
+  pendingJoinRoom: string | null
+
+  setNet: (patch: Partial<NetState>) => void
+  netHost: () => void
+  netJoin: (room: string) => void
+  netLeave: () => void
+  setPendingJoin: (room: string | null) => void
+
   showToast: (text: string, duration?: number) => void
   clearToast: (id: number) => void
   setSeed: (n: number) => void
@@ -214,6 +280,9 @@ export const useGame = create<GameState>((set, get) => ({
   duelId: 0,
   duelOutcome: 'none',
   duelCount: 0,
+  net: NET_IDLE,
+  netWant: NET_WANT_IDLE,
+  pendingJoinRoom: null,
 
   // The title tap is also the audio-unlock gesture, so the save is read here
   // rather than later: by this point we know whether she already has a cat.
@@ -243,6 +312,15 @@ export const useGame = create<GameState>((set, get) => ({
     set({ phase: 'playing', identityChosen: true })
     get().showToast(nameToast(catName(get().identity)))
     get().save()
+    // A scanned room waits here rather than connecting from start(), because a
+    // friend with no save goes through creation first and the connect overlay
+    // would sit on top of the sheet while she is picking a pelt. Cleared before
+    // the join so a second Begin cannot fire the same room twice.
+    const room = get().pendingJoinRoom
+    if (room) {
+      set({ pendingJoinRoom: null })
+      get().netJoin(room)
+    }
   },
 
   // Arms the ceremony rather than opening it. The catch toast has only just
@@ -342,6 +420,46 @@ export const useGame = create<GameState>((set, get) => ({
     }
     get().save()
   },
+
+  // A new object every time, so the connect overlay re-renders on a status
+  // change. Shallow, because NetDriver reports one thing at a time: the room id
+  // arrives long before the peer's identity does.
+  setNet: (patch) => set((s) => ({ net: { ...s.net, ...patch } })),
+
+  // The room id is left null here on purpose. newRoomId() lives in src/net/,
+  // which this file may not import, so NetDriver mints it and writes it back
+  // through setNet the moment it has one.
+  netHost: () =>
+    set({
+      netWant: { kind: 'host', room: null },
+      net: {
+        status: 'signaling',
+        role: 'host',
+        room: null,
+        peerName: null,
+        peerIdentity: null,
+        error: null,
+      },
+    }),
+
+  netJoin: (room) =>
+    set({
+      netWant: { kind: 'join', room },
+      net: {
+        status: 'signaling',
+        role: 'guest',
+        room,
+        peerName: null,
+        peerIdentity: null,
+        error: null,
+      },
+    }),
+
+  // Only states the intent. NetDriver's effect sees `kind` go back to 'idle',
+  // sends `bye` and disposes the peer, which is the one place that can.
+  netLeave: () => set({ netWant: NET_WANT_IDLE, net: NET_IDLE }),
+
+  setPendingJoin: (room) => set({ pendingJoinRoom: room }),
 
   showToast: (text, duration = TOAST_DURATION) => {
     toastId += 1
@@ -494,6 +612,12 @@ export const useGame = create<GameState>((set, get) => ({
       // driver's tracker and swallow its cue.
       duelActive: false,
       duelOutcome: 'none',
+      // Back to idle, which NetDriver reads as "drop the peer". Unlike the two
+      // counters above these carry no edge for anything to compare against, so
+      // there is nothing to swallow by rewinding them.
+      net: NET_IDLE,
+      netWant: NET_WANT_IDLE,
+      pendingJoinRoom: null,
       phase: 'title',
     })
   },

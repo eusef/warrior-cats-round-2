@@ -97,6 +97,42 @@ export const live = {
   },
 
   /**
+   * The other kid's cat. Per-frame pose only: who she is -- pelt, eyes, name --
+   * lives in the store under `net.peerIdentity` instead, so RemoteCat repaints
+   * her materials from a React effect the same way PlayerCat does, rather than
+   * checking for a change every frame.
+   *
+   * This mirrors the drawn half of `live.cat` on purpose, for the same reason
+   * `rival` does: one animator and one juice hook serve every cat in the world.
+   *
+   * `pos.y` is never sent. Two devices agree on the terrain function, so height
+   * is always recomputed from `groundHeightAt()` and a third of every packet is
+   * saved. `action` is a discrete label taken straight off the wire with no
+   * interpolation: easing between 'idle' and 'pounce' means nothing.
+   */
+  remote: {
+    /** A peer is connected AND has sent at least one pose. */
+    present: false,
+    /** Seconds of linger left after a drop. Counts down; at 0 the cat is hidden. */
+    linger: 0,
+    /** True between the drop and the end of the linger: frozen, still drawn. */
+    frozen: false,
+    // What is DRAWN. Eased toward the wire targets below by RemoteCat.
+    pos: new THREE.Vector3(),
+    yaw: 0,
+    speed: 0,
+    hopHeight: 0,
+    action: 'idle' as CatAction,
+    // The newest values off the wire. Written by NetDriver from a WebRTC
+    // callback, never from useFrame. Read and chased by RemoteCat.
+    tx: 0,
+    tz: 0,
+    tyaw: 0,
+    tspeed: 0,
+    thop: 0,
+  },
+
+  /**
    * Duel-level state. The stage that matters to React is mirrored into the
    * store on the handful of frames it changes; everything here is read by the
    * HUD's rAF loop and by useFrame, so proximity costs no re-renders at all.
@@ -199,6 +235,7 @@ export function resetLive(health = CAT_START_HEALTH, hunger = CAT_START_HUNGER) 
   live.cat.action = 'idle'
   resetCombatant(live.cat.duel)
   resetRival()
+  resetRemote()
   live.camera.yaw = 0
   live.camera.pitch = 0.16
   live.camera.snap = true
@@ -247,6 +284,29 @@ export function resetRival() {
   // whiffs is deliberately not reset, for the same reason discoverCount is not:
   // rewinding it would make the next miss compare equal to the audio driver's
   // tracker and swallow the cue.
+}
+
+/**
+ * Take the peer's cat off the field. Called from resetLive, and by NetDriver
+ * when a session ends: once the linger has run out there is nothing left to
+ * draw, so every target is zeroed too rather than left pointing at wherever she
+ * was standing when the link dropped.
+ */
+export function resetRemote() {
+  const m = live.remote
+  m.present = false
+  m.linger = 0
+  m.frozen = false
+  m.pos.set(0, 0, 0)
+  m.yaw = 0
+  m.speed = 0
+  m.hopHeight = 0
+  m.action = 'idle'
+  m.tx = 0
+  m.tz = 0
+  m.tyaw = 0
+  m.tspeed = 0
+  m.thop = 0
 }
 
 function clamp01to(v: number) {

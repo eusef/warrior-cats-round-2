@@ -744,9 +744,12 @@ export const ACTION_BUTTON_SIZE = 116
 export const HEALTH_BAR_EASE = 7
 
 // ---------------------------------------------------------------------------
-// Two-player co-op (backlog 11). See CLAUDE.md "The hosting exception" for why
-// this feature is allowed to touch a hosted service at all, and
-// docs/specs/warrior-cats-multiplayer-PRD.md for the design.
+// Two-player co-op (backlog 11). See CLAUDE.md "Two-player co-op runs entirely
+// on the LAN": the design is LAN-only, nothing is hosted anywhere and nothing is
+// deployed, because it has to work on a plane with no internet at all.
+// docs/specs/warrior-cats-multiplayer-PRD.md is still the design, but it is out
+// of date on hosting: it proposes Cloudflare Pages and that was rejected on
+// 2026-07-29.
 // ---------------------------------------------------------------------------
 
 /**
@@ -827,3 +830,110 @@ export const NET_PEER_TIMEOUT_SEC = 6
  * failure, not a slow game.
  */
 export const NET_ICE_SERVERS: RTCIceServer[] = []
+
+// Phase 1: the shared forest.
+
+/**
+ * Pose updates per second, each direction. Straight from the PRD.
+ *
+ * A pose is about 70 bytes of JSON, so 15 of them is a little over 1 KB/s out
+ * and the same back: 2.1 KB/s both ways, which is nothing on a link measured at
+ * an 11ms round trip. The number that matters is not the bandwidth, it is that
+ * 15 is far enough below the frame rate that the drawn peer has to be eased
+ * between packets rather than snapped to them.
+ */
+export const NET_POSE_HZ = 15
+
+/**
+ * Time-of-day corrections per second, host to guest only.
+ *
+ * One a second is plenty: a full day is DAY_LENGTH_SEC (180s), so a second of
+ * drift is 0.0056 of a cycle and invisible. The reason to send it at all is that
+ * without any sync the two devices run independent clocks from their own saves,
+ * and within seconds one child is in daylight and the other is at night in what
+ * is supposed to be one forest.
+ */
+export const NET_TOD_HZ = 1
+
+/**
+ * Decimal places for x, z and speed on the wire.
+ *
+ * Two places is centimetres, which is far finer than anything visible at the
+ * camera distance. It halves the bytes per pose and it strips the float noise
+ * that otherwise turns one coordinate into seventeen characters of JSON.
+ */
+export const NET_POSE_DP = 2
+
+/**
+ * Decimal places for yaw. Radians, so 0.001 is about a twentieth of a degree:
+ * finer than the eye, and finer than the yaw chase below will ever resolve.
+ */
+export const NET_YAW_DP = 3
+
+/**
+ * How fast the drawn peer cat eases toward the newest position off the wire, in
+ * 1/sec, used as `1 - Math.exp(-rate * delta)`. Same exponential-chase idiom
+ * FollowCamera, the HUD bars and useCatJuice already use.
+ *
+ * An exponential chase trails a moving target by roughly speed/rate, so about
+ * 0.5m at a full 7 m/s run: invisible at the camera distance, and crucially
+ * never a snap. A true snapshot buffer would be more accurate and would stutter
+ * on a late packet; this cannot, because it has no idea a packet was late.
+ */
+export const NET_REMOTE_CHASE = 14
+
+/** The same, for facing, via shortest-angle so it never unwinds the long way. */
+export const NET_REMOTE_YAW_CHASE = 10
+
+/**
+ * The same, for the speed that drives the walk/run animation blend. Speed comes
+ * off the wire rather than being differentiated from successive positions, which
+ * is exactly why the PRD's pose payload carries it: differentiating a chased
+ * position gives a blend that lags twice and wobbles at every packet boundary.
+ */
+export const NET_REMOTE_SPEED_CHASE = 12
+
+/**
+ * Metres. Past this the drawn cat teleports instead of easing, so a respawn or a
+ * debug teleport is not a long slide across the map.
+ */
+export const NET_REMOTE_SNAP_DIST = 6
+
+/**
+ * Seconds the peer's cat stays frozen in place after the connection drops,
+ * before it is hidden. US-8 permits "removed or clearly frozen".
+ *
+ * The PRD proposes a fade, and this deliberately is not one. A fade needs
+ * `transparent = true`, and `Grey` and `Black` are now SHARED material instances
+ * across all three cats, so turning transparency on for the peer would turn it
+ * on for Mila's cat and the rival too. Freezing costs nothing and touches no
+ * material.
+ */
+export const NET_REMOTE_LINGER_SEC = 0.8
+
+/**
+ * Where a joining guest is placed relative to CAT_SPAWN, in x and z.
+ *
+ * Both devices otherwise spawn at the same point, and two cats standing inside
+ * each other is the first thing either child sees.
+ */
+export const NET_GUEST_SPAWN_OFFSET: readonly [number, number] = [-2.2, 1.4]
+
+/**
+ * Side of the QR's dark modules on screen, in CSS px, not counting the quiet
+ * zone around them.
+ *
+ * Big because the thing reading it is ANOTHER iPad's camera from across a table,
+ * not the child holding it. A 33-module code at 300px puts every module at 9px,
+ * comfortably above what a phone camera resolves at arm's length.
+ */
+export const NET_QR_CODE_PX = 300
+
+/**
+ * The quiet zone, in MODULES rather than px, because that is the unit the QR
+ * spec states it in and the unit a scanner hunts for: four clear modules are how
+ * the decoder finds where the code ends. `qrPath` encodes with `border: 0`, so if
+ * this is not added when the code is drawn there is no quiet zone at all, and a
+ * code butted straight against a dark panel does not scan.
+ */
+export const NET_QR_QUIET_MODULES = 4

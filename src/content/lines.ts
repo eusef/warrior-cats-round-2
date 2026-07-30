@@ -189,3 +189,68 @@ export const DUEL_FLEE_LINES = [
   'You slip away into the ferns.',
   'You break off and run.',
 ] as const
+
+// --- Two cats, two iPads ----------------------------------------------------
+// The connect flow, in her words rather than the network's. Nothing in here says
+// relay, socket, host, guest, WebRTC or code-that-failed: a ten-year-old holding
+// an iPad needs to know what to do next, and nothing else.
+//
+// Every failure line ends somewhere she can act, and none of them suggest the
+// game is broken. Solo play is one tap away from every screen (US-1), so the
+// worst outcome any of these describes is playing on her own.
+//
+// No apostrophes anywhere in this section, matching the rest of the file.
+
+/** Title screen. Starts a forest and puts the code on the table. */
+export const COOP_HOST_LABEL = 'Play with a friend'
+
+/** Title screen, but only when the page was opened from a scanned code: the room
+ *  already exists and she is walking into it, not opening one. */
+export const COOP_JOIN_LABEL = 'Join your friend'
+
+/**
+ * The host wait screen: the code is on the screen and nothing else is happening
+ * yet. The typed-letters sentence is not a footnote. The native Camera app misses
+ * the QR often enough at a kid-held angle that a child with no fallback simply
+ * decides it does not work.
+ */
+export const COOP_HOST_TITLE = 'Waiting for your friend'
+export const COOP_HOST_HINT =
+  'Have your friend point a camera at this code. If the camera will not read it, the letters underneath can be typed in instead.'
+
+/** The guest wait screen. One line, because there is nothing for her to do. */
+export const COOP_JOIN_WAIT = 'Looking for the forest your friend opened...'
+
+/** Back out to solo play. On every connect screen, at every moment, one tap
+ *  (US-1). Named for what she gets, not for what it cancels. */
+export const COOP_SOLO_LABEL = 'Play by myself'
+
+export const COOP_RETRY_LABEL = 'Try again'
+
+/**
+ * One line per failure, one short sentence each, no jargon and no error codes.
+ * She never sees more than one of these at a time, and `COOP_SOLO_LABEL` is
+ * always on the same screen.
+ */
+export const COOP_FAIL_RELAY = 'Cannot reach the laptop, so the forest will not open.'
+export const COOP_FAIL_FULL = 'That forest already has two cats in it.'
+export const COOP_FAIL_STALE = 'That code is too old, so ask your friend for a new one.'
+export const COOP_FAIL_TIMEOUT = 'Nobody arrived in time.'
+export const COOP_FAIL_OTHER = 'That did not work, and nothing is broken.'
+
+/**
+ * Fixed templates, one slot each, filled only with a name `catName()` built from
+ * NAME_PREFIXES and WARRIOR_SUFFIXES. The name arrives as four small integers on
+ * the wire and is assembled on this device, so no text a friend typed can ever
+ * reach this string. Same closed-list rule as `nameToast`.
+ */
+export function friendJoinToast(name: string): string {
+  return `${name} is here. Two cats in the forest.`
+}
+
+/** The leaving line carries the whole of US-8: a child whose friend puts an iPad
+ *  down must not read it as the game breaking. So it says the forest is still
+ *  hers and to keep going, in that order. */
+export function friendLeftToast(name: string): string {
+  return `${name} went home. The forest is still yours, keep hunting.`
+}

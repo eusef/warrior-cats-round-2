@@ -36,6 +36,13 @@ import {
 } from '../game/constants'
 import { clockString, phaseName, wrapTime } from '../world/daylight'
 import { input, setActionHeld } from '../input/useTouchInput'
+// Type-only, all three, and that is load-bearing rather than tidy. A value
+// import here would pull the whole networking layer -- Peer, RTCPeerConnection,
+// the relay socket -- into a module main.tsx loads on every single boot,
+// including every solo one. `import type` is erased entirely at build time, so
+// this file knows the SHAPE of a session and carries none of the machinery.
+import type { NetDebug, NetInfo } from '../net/NetDriver'
+import type { NetMsg } from '../net/protocol'
 
 /** ?debug=1 turns on the overlay and the window bridge. Off by default. */
 export const DEBUG =
@@ -57,6 +64,13 @@ export const debugHooks: {
   setJuice?: (on: boolean) => void
   /** The rival's live state, read off `live` rather than the store. */
   rival?: () => Record<string, unknown>
+  /**
+   * The two-iPad session, registered by NetDriver and by nothing else. Typed
+   * through a type-only import, so naming it here costs this module no runtime
+   * dependency on `src/net/` at all. See the `net` bridge members below for why
+   * the whole seam exists.
+   */
+  net?: NetDebug
 } = {}
 
 export interface GameBridge {
@@ -134,6 +148,34 @@ export interface GameBridge {
     unlock: () => void
     play: (name: string) => void
   }
+  /**
+   * The two-iPad session, and the one seam in this file that exists because a
+   * machine cannot do something rather than because a screenshot cannot show it.
+   *
+   * THIS CHROME CANNOT COMPLETE AN ICE HANDSHAKE. Bisected during Phase 0 all
+   * the way down to two RTCPeerConnections in one tab, over loopback, with zero
+   * application code between them: they never pair. So the real transport is not
+   * verifiable on this machine at all, and pretending otherwise would mean
+   * reporting the whole of Phase 1 unverified.
+   *
+   * `netFake` installs a stub peer that constructs no RTCPeerConnection, talks
+   * to no relay and needs no network, then drives the same connected path a real
+   * peer drives. `netInject` is the receive half of the wire and `netOutbox` the
+   * send half. Between them every consequence of a message is assertable --
+   * toasts, identity, the guest spawn, the shared clock, RemoteCat's chase --
+   * leaving only the handshake itself for the iPads, which is exactly where
+   * Phase 0 already settled it: two devices, 3.6 seconds, `host / host`.
+   *
+   * Null whenever NetDriver is not mounted. Never throws in solo play.
+   */
+  net: () => NetInfo | null
+  /** Feed the receive path a message as if it arrived over the data channel. */
+  netInject: (msg: NetMsg) => void
+  /** The last messages actually SENT, newest last. Recorded DEBUG-only. */
+  netOutbox: () => NetMsg[]
+  netClearOutbox: () => void
+  /** Connect to a stub peer. No RTCPeerConnection, no relay, no network. */
+  netFake: (role: 'host' | 'guest') => void
   /** Installed by DebugSampler once the R3F root exists. */
   step?: (count?: number, dt?: number) => number
 }
@@ -165,6 +207,12 @@ export function installBridge() {
     seed: (n) => useGame.getState().setSeed(n),
 
     stats: () => {
+      // A session, or nothing. NetDriver is mounted on every boot, so `info()`
+      // answers even in solo play and reads back status 'idle' with a null role,
+      // which is six fields of noise on every readout that will never be about
+      // the network. Gated on there being something to say instead.
+      const n = debugHooks.net?.info() ?? null
+      const session = n && n.status !== 'idle' ? n : null
       const s = {
         fps: Math.round(live.stats.fps),
         drawCalls: live.stats.drawCalls,
@@ -195,6 +243,24 @@ export function installBridge() {
         discovered: LANDMARKS.filter((l) => isDiscovered(useGame.getState().discovered, l.id)).map(
           (l) => l.name,
         ),
+        // Six fields out of NetInfo's sixteen: whether the link is up, which end
+        // this is, which room, who is on the other end, how far away they feel,
+        // and whether their cat is actually being drawn. `__game.net()` has the
+        // rest, including every eased and wire value RemoteCat is chasing.
+        // Spread away entirely when there is no session, so a solo readout is
+        // byte for byte what it was before Phase 1.
+        ...(session
+          ? {
+              net: {
+                status: session.status,
+                role: session.role,
+                room: session.room,
+                peerName: session.peerName,
+                rtt: session.rtt,
+                remote: session.present,
+              },
+            }
+          : null),
       }
       // eslint-disable-next-line no-console
       console.log('[stats]', JSON.stringify(s, null, 2))
@@ -384,6 +450,16 @@ export function installBridge() {
         voices[name]?.()
       },
     },
+
+    // Registered by NetDriver, so every one of these is null-safe: solo play
+    // never mounts a session and `debugHooks.net` is simply absent. The floors
+    // are chosen so a caller never has to check -- `net()` reads null, the outbox
+    // reads empty -- rather than throwing on the machine that cannot connect.
+    net: () => debugHooks.net?.info() ?? null,
+    netInject: (msg: NetMsg) => debugHooks.net?.inject(msg),
+    netOutbox: () => debugHooks.net?.outbox() ?? [],
+    netClearOutbox: () => debugHooks.net?.clearOutbox(),
+    netFake: (role: 'host' | 'guest') => debugHooks.net?.fake(role),
   }
 
   ;(window as unknown as { __game: GameBridge }).__game = bridge
