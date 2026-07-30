@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Peer, type NetStatus, type PairInfo } from '../peer'
-import { qrPath, joinUrl } from '../qr'
+import { qrPath } from '../qr'
 import { newRoomId, roomFromUrl, signalHealthy, signalOrigin, signalUrl } from '../signal'
 
 /**
@@ -11,6 +11,26 @@ import { newRoomId, roomFromUrl, signalHealthy, signalOrigin, signalUrl } from '
  * what survive into Phase 1; this is the harness that proves them on real
  * hardware before a single line of game code depends on them.
  */
+
+/**
+ * Same-origin join URL, and deliberately NOT the game's `joinUrl` from `../qr`.
+ *
+ * That one now points every scan at the plain-http onboarding page, which probes
+ * the certificate and then forwards to the GAME at `/`. Correct for the game, and
+ * wrong here twice over: it would send a scan to `index.html` instead of
+ * `net.html`, which quietly turns the diagnostic harness into the thing it is
+ * supposed to be diagnosed against, and this page cannot be reached at all
+ * without https, so the device holding it has already trusted the CA and has
+ * nothing to onboard.
+ *
+ * Dies with the rest of this directory when Phase 1 is confirmed on the iPads.
+ */
+function joinUrl(room: string) {
+  const u = new URL(window.location.pathname, window.location.origin)
+  u.searchParams.set('join', room)
+  return u.toString()
+}
+
 export function SpikePage() {
   const joining = roomFromUrl()
   const [room] = useState(() => joining ?? newRoomId())

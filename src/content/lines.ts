@@ -228,6 +228,17 @@ export const COOP_SOLO_LABEL = 'Play by myself'
 export const COOP_RETRY_LABEL = 'Try again'
 
 /**
+ * Throws the code on screen away and opens a fresh forest with a fresh code.
+ *
+ * On the waiting screen, not just the failure one, because the thing it fixes
+ * does not look like a failure. A code that has been sitting out while she wanders
+ * off and comes back is dead on the relay, and a friend scanning it gets told her
+ * code is too old -- on the OTHER iPad, where nobody is looking. From this side
+ * the QR is still sitting there looking perfectly fine. One tap replaces it.
+ */
+export const COOP_NEW_CODE_LABEL = 'New code'
+
+/**
  * One line per failure, one short sentence each, no jargon and no error codes.
  * She never sees more than one of these at a time, and `COOP_SOLO_LABEL` is
  * always on the same screen.

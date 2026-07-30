@@ -99,9 +99,31 @@ hardcoded `ws://` works in Chrome on localhost and fails on both iPads.
 A device that has not yet trusted the CA **cannot open anything this project
 serves over HTTPS**, because that is precisely what the CA is for. So the one
 thing it needs first has to arrive over plain http, and that is the entire
-reason `tools/ca-server.mjs` exists as a separate server on 8080 rather than
+reason `tools/ca-server.mjs` exists as a separate server on **7173** rather than
 being a route on the Vite server. Do not "tidy" it into Vite; it would stop
-working for the only device that needs it.
+working for the only device that needs it. The port is duplicated in three
+places — `NET_ONBOARD_PORT`, `ca-server.mjs`, `serve.sh` — because the last two
+are plain scripts with no build step and cannot read a `.ts` file. It was 8080,
+which is too common a number to hand a child as an address, and it is
+deliberately **not 4173 or 5174**: those are where Vite goes on its own, and a
+stray Vite on the onboarding port would serve the game to the one device that
+cannot load it.
+
+**The QR code points at 7173, not at the game.** This is the part worth
+understanding, and it reverses the obvious design. An https URL in the code is
+*unopenable* on an iPad that has not trusted the CA: Safari shows a bare TLS
+error, there is nothing to tap, and nothing tells the child holding the camera
+that a certificate is what is being asked of her. Neither child knows in advance
+which kind of iPad is scanning. So `joinUrl()` in `src/net/qr.ts` builds
+`http://<same host>:7173/?join=ABCD`, and the onboarding page **probes** the
+game's https origin: a `no-cors` fetch resolves with an opaque response whatever
+the status and **rejects when TLS fails**, which is exactly the difference
+between the two kinds of iPad. Trusted, it forwards in about a tenth of a second
+and she never knows the hop happened. Untrusted, it shows the three steps and
+re-probes on `visibilitychange`, so **coming back to Safari after flipping the
+trust switch is what opens the game** — she never types an https address at all.
+One code works for both devices, which is what the extra hop buys. `?stay` on
+the onboarding URL suppresses the forward, for debugging.
 
 On a plane, all three devices get onto one network via **macOS Internet
 Sharing**, which brings up a Wi-Fi access point at a fixed `192.168.2.1` and
@@ -109,17 +131,18 @@ needs no router and no internet. `papa.local` resolves over that link by mDNS,
 which is why the certificate is issued for the name and not the address. The
 certificate also carries `192.168.2.1` as a fallback for hand-typing.
 
-**Order matters, and only the first step is http:**
+**A scanned code needs no steps at all now.** Hand-typed, only the first is http:
 
-1. `http://papa.local:8080` on the new iPad, tap through the three steps
-2. Settings, install the profile, then **Certificate Trust Settings, mkcert ON**
-3. `https://papa.local:5173` and it plays
+1. `http://papa.local:7173` on the new iPad
+2. Tap **Get the certificate**, then Settings, install the profile, then
+   **Certificate Trust Settings, mkcert ON**
+3. Switch back to Safari. The page notices and opens the game itself.
 
 ```bash
 ./tools/serve.sh                       # all three servers, one command
                                        #   5173 https  game + connection page
                                        #   8787 https  relay (never deployed)
-                                       #   8080 http   certificate onboarding
+                                       #   7173 http   onboarding, and where QRs land
 
 ./tools/make-certs.sh                  # only when the cert expires (397 days)
 
@@ -246,7 +269,22 @@ public/models/         # .glb only
 | Draw calls | 100 |
 | Triangles | 150k |
 | Texture size | 1024x1024 |
-| Unique materials | 22 |
+| Unique materials | 23 |
+
+Raised from 22 to 23 for the peer cat in two-player co-op, and **one** is the
+whole price of a third cat rather than the five the rival cost. `PlayerCat` and
+`RivalCat` now both go through `src/actors/catSkin.ts`, which clones `Main`,
+`Main_Light` and `Eyes` per cat — those are the three the pelt and eye pickers
+write to — and **shares one instance each of `Grey` and `Black` across every
+cat**, because nothing in the project ever recolours them. Grepped to confirm
+that before relying on it. It is also why a departing peer's cat **freezes rather
+than fades**: a fade needs `transparent = true`, and setting it on a shared
+material would turn Mila's cat and the rival translucent too.
+
+Measured in Chrome at 1180x806, dpr 2, with the connect screen open over a
+running game: **23 unique materials, 25 draw calls, 41.7k triangles, 14 shader
+programs.** Draw calls and triangles are inside the numbers already recorded for
+two cats, because the peer cat is hidden until a peer actually arrives.
 
 Raised from 15 to 16 for the camp beacon, which draws its shaft twice: once
 depth-tested and once with depth testing off so it stays visible through the

@@ -5,9 +5,11 @@ import {
   COOP_HOST_HINT,
   COOP_HOST_TITLE,
   COOP_JOIN_WAIT,
+  COOP_NEW_CODE_LABEL,
   COOP_RETRY_LABEL,
   COOP_SOLO_LABEL,
 } from '../content/lines'
+import { DEBUG } from '../debug/expose'
 import { useGame } from '../game/store'
 import { joinUrl, qrPath, type QrPath } from '../net/qr'
 
@@ -148,6 +150,16 @@ export function ConnectScreen() {
 
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
           {failed && <Btn label={COOP_RETRY_LABEL} onTap={retry} primary />}
+          {/* Only while a host is waiting. `netHost()` is the whole
+              implementation: it sets a FRESH netWant object with a null room, so
+              NetDriver's effect tears the dead session down -- goodbye, dispose,
+              room closed -- and mints a new id on the way back in. The QR is null
+              for the one frame in between, which is the case `card` above already
+              renders without a code rather than crashing on.
+              Not offered to a guest: she has no code to replace, only the one she
+              scanned. Not offered on the failure screen either, where a host's
+              `Try again` already does exactly this. */}
+          {!failed && hosting && <Btn label={COOP_NEW_CODE_LABEL} onTap={netHost} />}
           <Btn label={COOP_SOLO_LABEL} onTap={netLeave} />
         </div>
       </div>
@@ -184,6 +196,13 @@ function QrCard({ qr, room }: { qr: QrPath; room: string }) {
         // The room id underneath carries the same information as text, so there
         // is nothing here for a reader to miss.
         aria-hidden="true"
+        // The exact string encoded, under ?debug=1 only, because it cannot be
+        // read back out of the path and it is the one value in this whole flow
+        // that fails silently: a wrong host, port or scheme in here is a camera
+        // pointed at a dead end, and the code still looks perfectly scannable.
+        // Same rule as everywhere else in the project -- assert on the value, not
+        // on the pixels.
+        data-join={DEBUG ? qr.text : undefined}
         style={{ display: 'block', borderRadius: 14, background: '#ffffff' }}
       >
         <rect x={-NET_QR_QUIET_MODULES} y={-NET_QR_QUIET_MODULES} width={span} height={span} fill="#ffffff" />

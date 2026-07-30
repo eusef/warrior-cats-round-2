@@ -4,10 +4,15 @@
 #
 #   ./tools/serve.sh
 #
-# Three processes, but the iPads only ever talk to ONE port:
+# Three processes:
 #   5173  https  the game, the connection page, and /signal  (Vite)
 #   8787  http   the relay, LOOPBACK ONLY, proxied by Vite   (wrangler dev)
-#   8080  http   the certificate, for onboarding a new iPad
+#   7173  http   onboarding, and where every scanned QR lands
+#
+# 7173 must match NET_ONBOARD_PORT in src/game/constants.ts and PORT in
+# tools/ca-server.mjs. It has to be up for a QR code to be scannable at all: the
+# code points at the onboarding page, which forwards to the game once it has
+# proved the scanning iPad trusts the certificate.
 #
 # The relay is deliberately not reachable from the network. It had its own HTTPS
 # listener on 8787 and both iPads failed to open any connection to it, while
@@ -41,7 +46,7 @@ cat <<EOF
 
   play          https://$LOCAL:5173
   connect       https://$LOCAL:5173/net.html
-  new iPad      http://$LOCAL:8080          <- install the certificate first
+  new iPad      http://$LOCAL:7173          <- plain http, and where the QR points
 
 EOF
 wait

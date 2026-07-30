@@ -920,6 +920,28 @@ export const NET_REMOTE_LINGER_SEC = 0.8
 export const NET_GUEST_SPAWN_OFFSET: readonly [number, number] = [-2.2, 1.4]
 
 /**
+ * Port `tools/ca-server.mjs` listens on, over plain http, and therefore the port
+ * the QR code sends a friend's camera to.
+ *
+ * THE QR POINTS AT THE ONBOARDING PAGE, NOT AT THE GAME. This is the one thing
+ * about it worth understanding. An https URL in the code is unopenable on an iPad
+ * that has not trusted the CA yet -- a bare TLS error and a dead end -- and
+ * neither child knows which kind of iPad is holding the camera. The onboarding
+ * page probes the game's https origin and either forwards straight through or
+ * walks her through the three steps first, so a single code works for both. The
+ * cost is one extra hop of about a tenth of a second on the LAN.
+ *
+ * DUPLICATED in `tools/ca-server.mjs` and in the banner in `tools/serve.sh`,
+ * because those are plain scripts with no build step and cannot read a .ts file.
+ * Change it in all three or the code points at nothing.
+ *
+ * Not 8080: too common a port to hand to a child as an address. Not 4173 or 5174
+ * either, which are where Vite falls forward on its own, and a stray Vite on the
+ * onboarding port would serve the game to the one device that cannot load it.
+ */
+export const NET_ONBOARD_PORT = 7173
+
+/**
  * Side of the QR's dark modules on screen, in CSS px, not counting the quiet
  * zone around them.
  *
