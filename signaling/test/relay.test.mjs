@@ -8,7 +8,12 @@
  * from a router problem, and this is what tells the two apart.
  *
  *   NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem" \
- *     node signaling/test/relay.test.mjs [wss://papa.local:8787]
+ *     node signaling/test/relay.test.mjs [wss://papa.local:8791]
+ *
+ * The default goes through Vite's /signal proxy, which is what the iPads use
+ * and therefore what is worth testing. The optional argument reaches the relay
+ * directly on its loopback port, which is 8791 rather than wrangler's default
+ * 8787; see the note in signaling/package.json.
  */
 const BASE = process.argv[2] || "wss://papa.local:5173/signal"
 

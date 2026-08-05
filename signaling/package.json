@@ -5,7 +5,8 @@
   "description": "WebRTC signalling relay for Warrior Cats two-player co-op. Introduces two iPads, then gets out of the way.",
   "scripts": {
     "//": "Plain http on LOOPBACK ONLY. Vite proxies /signal to it, so the relay is never exposed on the network and never needs a certificate. Do not add --ip 0.0.0.0.",
-    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "//port": "8791, not wrangler's default 8787: another project on this laptop listens there, and when wrangler cannot bind, Vite proxies /signal into that server instead. The health probe passes and pairing fails, which reads as a router problem. Must match SIGNAL_PORT in vite.config.ts and NET_SIGNAL_PORT in src/game/constants.ts.",
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8791",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },

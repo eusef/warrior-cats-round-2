@@ -27,9 +27,15 @@ const https =
 
 /**
  * Port the signalling relay listens on, over PLAIN http, on LOOPBACK ONLY.
- * Must match NET_SIGNAL_PORT in src/game/constants.ts.
+ * Must match NET_SIGNAL_PORT in src/game/constants.ts and the --port in
+ * signaling/package.json.
+ *
+ * Deliberately not 8787, wrangler's default: another project on this laptop
+ * was already listening there, so wrangler could not bind and this proxy
+ * forwarded /signal into that unrelated server. The health probe passed and
+ * pairing failed, which looks exactly like a router problem.
  */
-const SIGNAL_PORT = 8787
+const SIGNAL_PORT = 8791
 /** Must match NET_SIGNAL_PATH in src/game/constants.ts. */
 const SIGNAL_PATH = '/signal'
 
@@ -73,12 +79,10 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        // The game.
+        // The game, and the only entry. The Phase 0 networking spike used to be
+        // a second one; it was deleted when Phase 1 folded the transport into
+        // the game, and the connect screen lives on the title screen now.
         main: resolve(__dirname, 'index.html'),
-        // The Phase 0 networking spike. A separate entry, importing nothing
-        // from the game beyond `constants.ts`, so nothing here can regress
-        // single player. Deleted once the transport is folded into the game.
-        net: resolve(__dirname, 'net.html'),
       },
     },
   },

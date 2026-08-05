@@ -773,8 +773,23 @@ export const HEALTH_BAR_EASE = 7
  * somewhere else. Nothing needs it today.
  */
 export const NET_SIGNAL_PATH = '/signal'
-/** Loopback port Vite proxies to. The browser never sees this. */
-export const NET_SIGNAL_PORT = 8787
+/**
+ * Loopback port Vite proxies to. The browser never sees this.
+ *
+ * DOCUMENTATION ONLY. Nothing reads this at runtime: the client derives the
+ * relay from `window.location.origin` and appends `NET_SIGNAL_PATH`, which is
+ * the whole point of the design above. It is duplicated in `vite.config.ts`
+ * (the proxy target) and `signaling/package.json` (what wrangler binds),
+ * because neither can import a `.ts` file. Change all three together.
+ *
+ * It was 8787, wrangler's default, and that turned out to be too popular a
+ * number to squat: another project on this laptop had a server sitting on it,
+ * so wrangler could not bind and Vite proxied `/signal` straight into that
+ * server instead. The health probe passed, because something really was
+ * answering, and pairing failed. That reads as a router problem and is not one.
+ * 8791 is not any tool's default, which is the entire reason to prefer it.
+ */
+export const NET_SIGNAL_PORT = 8791
 export const NET_SIGNAL_OVERRIDE = (import.meta.env?.VITE_SIGNAL_URL as string | undefined) ?? null
 
 /**

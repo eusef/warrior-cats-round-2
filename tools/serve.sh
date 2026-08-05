@@ -6,8 +6,14 @@
 #
 # Three processes:
 #   5173  https  the game, the connection page, and /signal  (Vite)
-#   8787  http   the relay, LOOPBACK ONLY, proxied by Vite   (wrangler dev)
+#   8791  http   the relay, LOOPBACK ONLY, proxied by Vite   (wrangler dev)
 #   7173  http   onboarding, and where every scanned QR lands
+#
+# 8791 must match SIGNAL_PORT in vite.config.ts and NET_SIGNAL_PORT in
+# src/game/constants.ts. It is deliberately not wrangler's default 8787: another
+# project on this laptop listens there, and a relay that cannot bind leaves Vite
+# proxying /signal into whatever did. The health probe then passes against the
+# wrong server and pairing fails, which reads as a router problem for an hour.
 #
 # 7173 must match NET_ONBOARD_PORT in src/game/constants.ts and PORT in
 # tools/ca-server.mjs. It has to be up for a QR code to be scannable at all: the
@@ -44,8 +50,7 @@ cat <<EOF
 
   ready, and nothing here touches the internet
 
-  play          https://$LOCAL:5173
-  connect       https://$LOCAL:5173/net.html
+  play          https://$LOCAL:5173         <- and co-op starts here too, on the title screen
   new iPad      http://$LOCAL:7173          <- plain http, and where the QR points
 
 EOF

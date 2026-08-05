@@ -141,7 +141,7 @@ certificate also carries `192.168.2.1` as a fallback for hand-typing.
 ```bash
 ./tools/serve.sh                       # all three servers, one command
                                        #   5173 https  game + connection page
-                                       #   8787 https  relay (never deployed)
+                                       #   8791 http   relay, loopback only, never deployed
                                        #   7173 http   onboarding, and where QRs land
 
 ./tools/make-certs.sh                  # only when the cert expires (397 days)
@@ -644,12 +644,81 @@ Unlocked: she has played v1. Still ordered by joy per line of code, and still **
     router problem. It has already caught four, including WebSocket Hibernation
     silently breaking `close()`.
 
-    **Not built yet:** Phase 1 (Tier 0, both cats in one forest, `src/net/`
-    integrated into the game, `RemoteCat.tsx`) and Phase 2 (Tier 1, shared
-    prey). `src/net/spike/` and `net.html` are the Phase 0 harness and get
-    deleted when Phase 1 lands; `peer.ts`, `signal.ts` and `qr.ts` survive.
-    **Nothing in the game bundle imports `src/net/` yet**, which is why solo
-    play cannot have regressed.
+    **Phase 1 (Tier 0, both cats in one forest): DONE, confirmed on two iPads
+    2026-08-05.** Both children scanned in, connected, and saw each other
+    running around the same forest. That closes the whole transport-to-gameplay
+    path on real devices: the QR scanned off a live iPad screen, the onboarding
+    hop on 7173, the WebRTC link over the LAN, and pose streaming rendering as a
+    second cat that moves. `src/net/` is folded into the game.
+    `src/net/NetDriver.tsx` owns the session and is the only thing that decides
+    what crosses the wire, exactly the way `AudioDriver` owns when a sound
+    plays, and `src/actors/RemoteCat.tsx` draws the peer. Save is untouched at
+    v5: a co-op session persists nothing about the other cat.
+
+    **Solo play is no longer safe by construction, and this is the one thing
+    that changed character.** The old guarantee was that nothing in the game
+    bundle imported `src/net/`. `App.tsx` now imports `NetDriver` and
+    `roomFromUrl`, so the guarantee is enforced at runtime instead, by
+    `CAN_COOP` in `App.tsx`: `window.isSecureContext && 'RTCPeerConnection' in
+    window`, evaluated once at module scope. On a plain http origin both halves
+    are false, the co-op button is never rendered, and nothing reachable from
+    the title screen touches `src/net/`. It is feature-detected rather than
+    read off the URL because only the browser knows both answers. **Verify solo
+    play after touching anything in `src/net/`; it can regress now.**
+
+    **The third cat costs ONE material, not five.** `src/actors/catSkin.ts`
+    clones only `Main`, `Main_Light` and `Eyes` per cat, the three the pickers
+    write to, and shares one `Grey` and one `Black` across every cat. That
+    sharing is also why a departing peer's cat **freezes rather than fades**: a
+    fade needs `transparent = true`, and setting that on a shared material
+    would turn Mila's cat and the rival translucent too.
+
+    **The entry point is the title screen, not a separate page.** Host taps the
+    co-op button at `https://papa.local:5173`; guest scans the QR, lands on
+    7173, and is forwarded to `?join=CODE`. The host path deliberately does not
+    call `start()`: NetDriver starts the game only once the peer is really
+    there, so the forest is never opened and the clock never started for a
+    friend who has not arrived. The guest path parks the room with
+    `setPendingJoin` rather than joining immediately, because a friend with no
+    save routes into character creation first and the connect overlay must not
+    land on top of the pelt picker.
+
+    Measured in Chrome at 1180x806, dpr 2: **23 materials, 30 draw calls,
+    42.5k triangles, 60fps with three cats and a duel running**, 3 distinct
+    skeletons, 11 distinct cat material instances. Pose rate exactly 15/s, and
+    0 poses on the title and creation screens. A peer at distance 0 spamming
+    `act:'swipe'` for 5s left the duel untouched.
+
+    **Chrome could not prove the handshake, and never will.** The two-tab test
+    reached ICE gathering over the real relay and then **failed to pair, on that
+    Chrome's mDNS fault**. Two iPads have now done it twice, in Phase 0 and
+    again here, so treat a desktop pairing failure as the desktop's problem and
+    go to the devices rather than debugging it.
+
+    **The relay is on 8791, not wrangler's default 8787.** Another project on
+    this laptop listens on 8787, so wrangler could not bind and Vite proxied
+    `/signal` straight into that unrelated server. The health probe passed,
+    because something really was answering, and pairing failed. That reads as a
+    router problem and is not one. The port is duplicated in `vite.config.ts`,
+    `signaling/package.json` and `NET_SIGNAL_PORT`; change all three together.
+    Nothing reads the constant at runtime, since the client derives the relay
+    from `window.location.origin`.
+
+    **Still unverified on the device, and none of it blocks play:** framerate
+    with three cats and a live data channel, a duel fought between the two
+    players, what a departing peer looks like when her cat freezes, and whether
+    the connect copy reads at arm's length.
+
+    **The one real gap in the flow: there is nowhere to type a code.**
+    `COOP_HOST_HINT` tells her "the letters underneath can be typed in
+    instead", and there is no text input, keypad or form control anywhere in
+    `ConnectScreen.tsx` or on the onboarding page. The only path into a room is
+    a URL carrying `?join=`. If the camera will not read the code, the actual
+    fallback is hand-typing `http://papa.local:7173/?join=CODE`, which the copy
+    does not say and a 10-year-old will not guess. Either build the input or
+    change the line.
+
+    **Phase 2 (Tier 1, shared prey) is not built.**
 12. ~~**Cat Models.**~~ **DONE** — she is a cat now, not a recoloured fox.
     `public/models/Cat.glb`, and it is **built, not downloaded**:
     `tools/cat_transfer.py` welds a donor cat mesh onto the fox's armature in
