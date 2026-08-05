@@ -245,6 +245,21 @@ public/models/         # .glb only
 - **Do the state change first in a press handler, decoration after.** A handler
   that sets a "held" latch, then throws, then never engages, leaves a button
   that is dead for the rest of the session rather than for one tap.
+- **Never let a control be freed ONLY by a matching `pointerId`.** A window
+  listener is necessary and not sufficient: it catches a finger that lifts
+  somewhere unexpected, and does nothing when iOS never dispatches the event at
+  all, which it does. Mila hit this on the joystick. `movePointer` stayed set,
+  so the move vector stayed latched and **the cat ran forever**, and the
+  `if (movePointer !== null) return` guard then refused every later touch, so
+  **the d-pad was dead until a reload**. Reproduced exactly in Chrome: one
+  dropped `pointerup` pinned `moveMag` at 1.000, and neither a zero-touch
+  `touchend` nor a `pointercancel` on another id could free it. Every held
+  control needs two independent ways out: **a `touchend` with
+  `e.touches.length === 0` releases everything**, since WebKit synthesises
+  pointer events from touch events and so still fires it, and **a new press
+  takes the control over** rather than being refused, which makes a permanently
+  dead control unreachable. `ActionButton` and `DuelControls` still gate on an
+  exact `pointerId` and can latch the same way.
 - **Keep tappable things out of the bottom edge.** In landscape Safari without
   Add to Home Screen `env(safe-area-inset-bottom)` is `0px`, so a small margin
   puts a control inside the home-indicator swipe strip and iPadOS competes for

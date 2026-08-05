@@ -134,7 +134,24 @@ export function useTouchInput(layerRef: React.RefObject<HTMLElement>) {
     const onDown = (e: PointerEvent) => {
       const leftHalf = e.clientX < window.innerWidth * 0.5
       if (leftHalf) {
-        if (movePointer !== null) return
+        // A NEW touch always takes the stick, rather than being refused while
+        // one is already held. This looks like it breaks multi-touch and does
+        // not: the left half is one thumb, and the alternative is far worse.
+        //
+        // The guard that used to be here was `if (movePointer !== null) return`,
+        // and it is half of a bug Mila hit on the iPad. Releasing the stick
+        // requires a pointerup or pointercancel carrying the EXACT original
+        // pointerId, and iOS Safari does not reliably deliver either -- the same
+        // fact ActionButton.tsx has recorded since the Stalk button died for a
+        // whole session. Miss that one event and `movePointer` stays set: the
+        // move vector stays latched so the cat runs forever, and this guard then
+        // refused every later touch, so the d-pad was dead until a reload.
+        // Reproduced exactly: one dropped pointerup left moveMag pinned at 1.000
+        // and a fresh finger could not move stickOrigin off the old one.
+        //
+        // Taking over makes that state unreachable. Whatever else goes wrong,
+        // the very next touch re-seats the stick, so the worst case is one bad
+        // frame instead of a dead control.
         movePointer = e.pointerId
         input.stickActive = true
         input.stickOriginX = e.clientX
@@ -224,6 +241,25 @@ export function useTouchInput(layerRef: React.RefObject<HTMLElement>) {
     // nothing at all.
     let lastTouchEnd = 0
     const onTouchEnd = (e: TouchEvent) => {
+      // No fingers left anywhere on the glass, so nothing can legitimately
+      // still be held. This is the deterministic half of the stuck-joystick
+      // fix and it goes FIRST, before the double-tap work below, per the rule
+      // that a press handler changes state before it decorates.
+      //
+      // It exists because pointerup is the unreliable event here and touchend
+      // is not: WebKit synthesises pointer events FROM touch events, so a
+      // dropped pointerup still leaves a touchend behind. Verified in Chrome
+      // that a stuck stick is NOT rescued by a zero-touch touchend today, which
+      // is exactly the hole this closes.
+      //
+      // `touches` excludes the finger that just ended, so 0 really does mean an
+      // empty screen. A thumb still on the stick while the other hand lifts off
+      // the Stalk button leaves length 1 and is correctly left alone.
+      if (e.touches.length === 0) {
+        releaseStick()
+        lookPointer = null
+      }
+
       const now = e.timeStamp
       // Only ever cancels the SECOND tap of a pair, so a normal single tap
       // keeps its default behaviour untouched.
