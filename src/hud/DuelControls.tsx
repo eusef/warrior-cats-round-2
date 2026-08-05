@@ -174,7 +174,22 @@ function DuelButton({
   const press = (e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    if (heldPointer.current !== null) return
+    // A NEW press TAKES the button over rather than being refused. The guard
+    // that used to be here was `if (heldPointer.current !== null) return`, and
+    // it is the half of the stuck-control bug that does the lasting damage:
+    // release below only fires for the EXACT original pointerId, iOS Safari
+    // does not reliably dispatch the pointerup or pointercancel carrying it,
+    // and one missed event therefore made this button refuse every later tap
+    // for the rest of the session. That is the failure the comment below
+    // already described and could not actually prevent.
+    //
+    // Taking over makes the dead state unreachable: whatever else goes wrong,
+    // the next tap re-seats heldPointer on a live pointer and fires the move.
+    // The joystick did exactly this in 97333eb. Two simultaneous fingers on one
+    // DUEL_BUTTON_SIZE circle is not a gesture this game has, so the only thing
+    // the guard ever protected was the recovery path -- and on Run away a
+    // refused tap is the one failure this whole design exists to make
+    // impossible.
     heldPointer.current = e.pointerId
     // Fires on press, not release. Every action gets feedback inside 100ms, and
     // waiting for the finger to lift adds however long she holds it for.
@@ -194,21 +209,38 @@ function DuelButton({
     ref.current?.style.setProperty('transform', 'scale(1)')
   }
 
-  // Same backstop as ActionButton, for the same reason: without it a missed
-  // pointerup leaves heldPointer set and the button refuses every later tap
-  // for the rest of the session. On Run away that is the one failure this
-  // whole design is meant to make impossible.
+  // Same two backstops as ActionButton, for the same reason.
+  //
+  // The window listener catches a finger that lifts somewhere other than the
+  // button, and it is necessary without being sufficient: it can do nothing at
+  // all when iOS simply never dispatches the pointerup. The zero-touch touchend
+  // is the independent second way out, and it works precisely because touchend
+  // is the reliable event of the pair -- WebKit synthesises pointer events FROM
+  // touch events, so a dropped pointerup still leaves a touchend behind.
+  //
+  // `touches` excludes the finger that just ended, so 0 means an empty screen
+  // and nothing can still legitimately be held; a thumb still on the joystick
+  // leaves length 1 and is correctly left alone. This only ever un-presses a
+  // button visually, since the move already fired on the way down.
   useEffect(() => {
-    const up = (e: PointerEvent) => {
-      if (heldPointer.current !== e.pointerId) return
+    const clear = () => {
       heldPointer.current = null
       ref.current?.style.setProperty('transform', 'scale(1)')
     }
+    const up = (e: PointerEvent) => {
+      if (heldPointer.current !== e.pointerId) return
+      clear()
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0 && heldPointer.current !== null) clear()
+    }
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    document.addEventListener('touchend', onTouchEnd, { passive: true })
     return () => {
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', up)
+      document.removeEventListener('touchend', onTouchEnd)
     }
   }, [ref])
 

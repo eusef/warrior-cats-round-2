@@ -138,6 +138,38 @@ certificate also carries `192.168.2.1` as a fallback for hand-typing.
    **Certificate Trust Settings, mkcert ON**
 3. Switch back to Safari. The page notices and opens the game itself.
 
+**With no `?join=` on the URL, that page now shows a keypad rather than
+forwarding.** This is the answer to "the camera will not read the code", which
+`COOP_HOST_HINT` had been promising since the connect screen was written while
+there was no text input, keypad or form control anywhere in the project to
+deliver it. The real fallback was hand-typing
+`http://papa.local:7173/?join=CODE`, punctuation included, which the copy never
+said and a 10-year-old will not guess.
+
+So she types the SHORT address in step 1 above and taps her friend's four
+letters. The keys are exactly `NET_ROOM_ALPHABET`, the fourth tap is the go
+button rather than a separate submit, and it then runs **the same probe** as a
+scan: forward if this iPad already trusts the CA, the three steps above if not.
+**The typed code stays on screen through the certificate steps**, because
+otherwise a typo is a dead end that only a reload escapes.
+
+Two things worth knowing. **It is on 7173 and not in the game's connect screen
+on purpose**: a keypad in `ConnectScreen.tsx` only helps a device that can
+already load https, and the iPad that most needs to type a code is precisely
+the one that cannot. And **the onboarding page binds `click`, not
+`pointerdown`**, unlike every control in the game bundle. That is correct here
+and not an oversight: it matches the buttons that page already had, it is a
+plain page with `width=device-width` so iOS adds no tap delay, and nothing on
+it goes through `useTouchInput`'s double-tap `preventDefault`, which is the
+thing that makes `click` unusable inside the game.
+
+**Chrome cannot load `http://papa.local:7173` at all.** It auto-upgrades the
+navigation to https because `papa.local:5173` serves TLS, and lands on
+`chrome-error://chromewebdata`. iOS Safari does not do this -- the scan flow is
+plain http to that exact host and worked on both iPads -- but it does mean the
+forward-on-trust branch has to be verified on a device or on an IP literal,
+never in Chrome via the `.local` name.
+
 ```bash
 ./tools/serve.sh                       # all three servers, one command
                                        #   5173 https  game + connection page

@@ -49,11 +49,26 @@ export const input = {
  *  leaf module that imports nothing but its own constants. */
 export type DuelMove = 'swipe' | 'pounce' | 'jumpkick'
 
+/**
+ * Zeroes every input, including the two module-level pointer ids.
+ *
+ * Nothing calls this today. It is kept correct rather than deleted because the
+ * two ids are the trap: zeroing the vector while leaving `movePointer` set
+ * recreates the exact bug Mila hit on the iPad -- the next pointermove carrying
+ * that id would drive the stick straight back to full deflection from a finger
+ * the game no longer believes is down, and every consumer would read a cat that
+ * runs on its own. Clearing them is also what lets the very next touch re-seat
+ * the stick, which is the recovery path the whole latch fix depends on.
+ */
 export function resetInput() {
+  movePointer = null
+  lookPointer = null
   input.move.x = 0
   input.move.y = 0
   input.moveMag = 0
   input.stickActive = false
+  input.stickKnobX = 0
+  input.stickKnobY = 0
   input.lookDX = 0
   input.lookDY = 0
   input.action = false

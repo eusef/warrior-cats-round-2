@@ -48,6 +48,34 @@ export default defineConfig({
     // like the game being broken.
     port: 5173,
     strictPort: true,
+    /**
+     * The mDNS name has to be allowed BY NAME, or HMR fails on every device.
+     *
+     * Vite 5.4.12 closed a DNS-rebinding hole by rejecting any request whose
+     * Host header is not an IPv4 literal, `localhost`, or listed here. That
+     * check is SKIPPED for ordinary http requests whenever `https` is set,
+     * which is exactly why the page itself loads fine from
+     * `https://papa.local:5173` and this looked like it could not be a host
+     * problem. The WebSocket upgrade is checked unconditionally. So the HMR
+     * socket to `wss://papa.local:5173/` was answered `400 Bad Request`
+     * (confirmed with curl against the running server), the client fell back
+     * to `wss://localhost:5173/` -- which on the iPad is the iPad -- and every
+     * single page load logged `[vite] failed to connect to websocket`.
+     *
+     * Harmless to the game, and fixed rather than silenced because the bar
+     * here is zero console errors, and a permanent websocket failure in the
+     * log is actively misleading in the middle of a WebRTC debugging session.
+     *
+     * `.local` and NOT `papa.local`: a leading dot matches any host under that
+     * suffix, so this survives the laptop's Bonjour name changing and is the
+     * same on every network, including the plane. A hardcoded hostname or IP
+     * would not be. Nothing else needs listing -- `192.168.1.52` and
+     * `192.168.2.1` are IPv4 literals, which the check always allows, and so
+     * is `localhost`. It also unblocks `http://papa.local:5173` on a clone
+     * with no `certs/`, where the check DOES apply to page loads and would
+     * otherwise 403 the game itself.
+     */
+    allowedHosts: ['.local'],
     https,
     proxy: {
       /**
